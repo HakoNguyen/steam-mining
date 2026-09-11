@@ -1,0 +1,16 @@
+# Core Data Engineering & Networking
+requests>=2.31.0
+curl-cffi>=0.7.0
+urllib3>=2.0.0
+
+# Data Warehousing & Databases
+psycopg2-binary>=2.9.9
+SQLAlchemy>=2.0.0
+
+# Data Processing & Analytics
+pandas>=2.2.0
+numpy>=1.26.0
+
+# Utilities
+python-dotenv>=1.0.1
+pytest>=8.0.0

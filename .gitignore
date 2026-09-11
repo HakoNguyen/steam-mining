@@ -1,0 +1,79 @@
+# ==========================================
+# 1. Environment & Secret Variables
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ==========================================
+# 2. Python Cache & Virtual Environments
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# 3. Data Engineering, Lake & Staging Data
+# ==========================================
+# Ignore local SQLite databases, CSV dumps, JSON temporary crawls
+*.db
+*.sqlite
+*.sqlite3
+*.csv
+*.parquet
+*.json
+!dashboard/package.json
+!dags/config/*.json
+
+# Keep sample data schema files if explicitly tracked
+steam_sample_data.json
+
+# MinIO data volume if mounted locally
+minio_data/
+postgres_data/
+
+# ==========================================
+# 4. Apache Airflow System Files
+# ==========================================
+airflow.cfg
+airflow.db
+airflow-webserver.pid
+logs/
+plugins/__pycache__/
+*.log
+
+# ==========================================
+# 5. IDE & OS Metadata
+# ==========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+discuss/
