@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # Container 1: PostgreSQL Data Warehouse Engine
+  postgres-dwh:
+    image: postgres:16-alpine
+    container_name: steam_postgres_dwh
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_databases.sql:/docker-entrypoint-initdb.d/init_databases.sql
+    networks:
+      - steam_dwh_net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Container 2: MinIO Object Storage (Raw S3 Data Lake)
+  minio-datalake:
+    image: minio/minio:latest
+    container_name: steam_minio_lake
+    restart: always
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: adminpassword123
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: adminpassword123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - steam_dwh_net
+    # Container 3: Apache Airflow (ETL Orchestrator)
+  apache-airflow:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: steam_apache_airflow
+    restart: always
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=${AIRFLOW__CORE__EXECUTOR}
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres-dwh:5432/airflow_db
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY}
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    command: bash -c "airflow db init && airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com && airflow webserver & airflow scheduler"
+    networks:
+      - steam_dwh_net
+
+  # Container 4: Metabase BI (Dashboard)
+  metabase-bi:
+    image: metabase/metabase:latest
+    container_name: steam_metabase_bi
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase_db
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${POSTGRES_USER}
+      MB_DB_PASS: ${POSTGRES_PASSWORD}
+      MB_DB_HOST: postgres-dwh
+    depends_on:
+      postgres-dwh:
+        condition: service_healthy
+    networks:
+      - steam_dwh_net
+
+networks:
+  steam_dwh_net:
+    driver: bridge
+
+volumes:
+  minio_data:
+  postgres_data:
+
