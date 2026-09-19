@@ -6,12 +6,10 @@ from io import BytesIO
 from dotenv import dotenv_values
 from minio import Minio
 
-# 1. Load Environment Variables safely via dotenv_values
+# 1. Load Environment Variables safely
 config = dotenv_values(".env")
 
-MINIO_ENDPOINT = config.get("MINIO_ENDPOINT", "localhost:9000")
-if not MINIO_ENDPOINT or "minio-datalake" in MINIO_ENDPOINT:
-    MINIO_ENDPOINT = "localhost:9000"
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT") or config.get("MINIO_ENDPOINT") or "localhost:9000"
 
 MINIO_ROOT_USER = config.get("MINIO_ROOT_USER", "admin")
 MINIO_ROOT_PASSWORD = config.get("MINIO_ROOT_PASSWORD", "adminpassword123")
@@ -52,6 +50,15 @@ def save_json_to_minio(client, source_name, appid, payload):
     )
     print(f"[MinIO S3 OK] Saved: s3://{MINIO_BUCKET_NAME}/{object_name}")
     return object_name
+
+def get_target_appids(limit=50):
+    url = "https://steamspy.com/api.php?request=top100in2weeks"
+    data = fetch_steam_api(url)
+    if data and isinstance(data, dict):
+        appids = [int(k) for k in data.keys() if k.isdigit()]
+        if appids:
+            return appids[:limit]
+    return [1091500, 730, 570, 1086940, 271590]
 
 # 4. Fetch Steam API with curl_cffi
 def fetch_steam_api(url, impersonate='chrome124', retries=3):
