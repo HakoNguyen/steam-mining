@@ -31,6 +31,7 @@ var/
 wheels/
 *.egg-info/
 .installed.cfg
+*.pytest_cache/
 *.egg
 .pytest_cache/
 .coverage
@@ -40,6 +41,7 @@ htmlcov/
 # 3. Data Engineering, Lake & Staging Data
 # ==========================================
 # Ignore local SQLite databases, CSV dumps, JSON temporary crawls
+ 
 *.db
 *.sqlite
 *.sqlite3
@@ -48,6 +50,8 @@ htmlcov/
 *.json
 !dashboard/package.json
 !dags/config/*.json
+
+steam_sample_data.json
 
 # Keep sample data schema files if explicitly tracked
 steam_sample_data.json
@@ -76,4 +80,6 @@ plugins/__pycache__/
 .DS_Store
 Thumbs.db
 ehthumbs.db
+desktop.ini
+
 discuss/
