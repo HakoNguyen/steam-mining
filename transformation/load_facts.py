@@ -18,7 +18,7 @@ from transformation.db_connect import (
 
 def process_ccu_snapshots(conn, client):
     cursor = conn.cursor()
-    objects = client.list_objects(MINIO_BUCKET_NAME, pref="ccu/", recursive=True)
+    objects = client.list_objects(MINIO_BUCKET_NAME, prefix="ccu/", recursive=True)
     print("[Fact Loader] Processing CCU Snapshots...")
     
     processed_count = 0
@@ -63,7 +63,8 @@ def process_ccu_snapshots(conn, client):
             VALUES (%s, %s, %s, %s, %s, %s, 0)
             ON CONFLICT (game_id, date_key, time_key) DO UPDATE SET
                 concurrent_players = EXCLUDED.concurrent_players,
-                snapshot_timestamp = EXCLUDED.snapshot_timestamp;
+                snapshot_timestamp = EXCLUDED.snapshot_timestamp,
+                updated_at = CURRENT_TIMESTAMP;
         """
         cursor.execute(query, (game_id, date_key, time_key, snapshot_dt, player_count, price_vnd))
         processed_count += 1
@@ -96,7 +97,8 @@ def aggregate_daily_game_performance(conn):
             min_ccu = EXCLUDED.min_ccu,
             snapshot_count = EXCLUDED.snapshot_count,
             price_vnd = EXCLUDED.price_vnd,
-            discount_pct = EXCLUDED.discount_pct;
+            discount_pct = EXCLUDED.discount_pct,
+            updated_at = CURRENT_TIMESTAMP;
     """
     cursor.execute(query)
     conn.commit()

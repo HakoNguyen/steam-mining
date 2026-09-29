@@ -78,7 +78,8 @@ def process_store_dimensions(conn, client):
                     is_free = EXCLUDED.is_free,
                     price_vnd = EXCLUDED.price_vnd,
                     publisher_name = EXCLUDED.publisher_name,
-                    developer_name = EXCLUDED.developer_name;
+                    developer_name = EXCLUDED.developer_name,
+                    updated_at = CURRENT_TIMESTAMP;
             """
             cursor.execute(query, (
                 game_id, game_title, app_type, release_date_iso,
@@ -135,7 +136,7 @@ def process_steamspy_dimensions(conn, client):
         total_reviews = positive + negative
 
         cursor.execute(
-            "UPDATE dim_game SET total_reviews = %s WHERE game_id = %s;",
+            "UPDATE dim_game SET total_reviews = %s, updated_at = CURRENT_TIMESTAMP WHERE game_id = %s;",
             (total_reviews, game_id)
         )
 
@@ -161,7 +162,9 @@ def process_steamspy_dimensions(conn, client):
                         """
                         INSERT INTO bridge_game_tag (game_id, tag_id, vote_count)
                         VALUES (%s, %s, %s)
-                        ON CONFLICT (game_id, tag_id) DO UPDATE SET vote_count = EXCLUDED.vote_count;
+                        ON CONFLICT (game_id, tag_id) DO UPDATE SET 
+                            vote_count = EXCLUDED.vote_count,
+                            updated_at = CURRENT_TIMESTAMP;
                         """,
                         (game_id, tag_id, vote_count)
                     )

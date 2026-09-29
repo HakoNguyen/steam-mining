@@ -9,8 +9,8 @@ from datetime import datetime
 config = dotenv_values('.env')
 
 # PostgreSQL
-DB_HOST = os.environ.get('POSTGRES_HOST') or config.get('POSTGRES_HOST', 'localhost')
-DB_PORT = os.environ.get("POSTGRES_PORT") or config.get("POSTGRES_PORT", "5433")
+DB_HOST = os.environ.get('POSTGRES_HOST') or config.get('POSTGRES_HOST') or 'localhost'
+DB_PORT = os.environ.get("POSTGRES_PORT") or config.get("POSTGRES_PORT") or "5433"
 DB_NAME = config.get("POSTGRES_DB", "steam_dwh")
 DB_USER = config.get("POSTGRES_USER", "admin")
 DB_PASS = config.get("POSTGRES_PASSWORD", "adminpassword123")

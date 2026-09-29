@@ -55,6 +55,8 @@ services:
       - _PIP_ADDITIONAL_REQUIREMENTS=minio curl-cffi python-dotenv
       - PYTHONPATH=/opt/airflow
       - MINIO_ENDPOINT=minio-datalake:9000
+      - POSTGRES_HOST=postgres-dwh
+      - POSTGRES_PORT=5432
     ports:
       - "8080:8080"
     volumes:
@@ -62,6 +64,7 @@ services:
       - ./ingestion:/opt/airflow/ingestion
       - ./.env:/opt/airflow/.env
       - ./logs:/opt/airflow/logs
+      - ./transformation:/opt/airflow/transformation
     depends_on:
       postgres-dwh:
         condition: service_healthy
