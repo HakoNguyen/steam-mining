@@ -91,3 +91,21 @@ def test_review_classifier(tmp_path):
     assert metrics["baseline_majority"]["f1_macro"] < 0.5
     for f in ["review_metrics.json", "review_clf.joblib", "review_top_terms.png"]:
         assert (tmp_path / f).exists()
+
+
+def test_negative_topics(tmp_path):
+    from mining.negative_topics import run
+
+    rng = np.random.default_rng(0)
+    # 10 từ/nhóm = TOP_WORDS, để coherence đo đúng từng nhóm
+    vocab = [["crash", "launch", "freeze", "driver", "error", "bug", "fps", "lag", "stutter", "server"],
+             ["money", "price", "refund", "expensive", "microtransaction", "pay", "cash", "wallet", "cost", "dlc"],
+             ["boring", "repetitive", "grind", "tedious", "dull", "slow", "shallow", "bland", "story", "quest"]]
+    texts = [" ".join(rng.choice(vocab[i % 3], 8)) for i in range(150)] + ["too short"]
+    # cố định k: UMass không phạt chủ đề bị bỏ sót (k=2 bỏ cả nhóm money vẫn mạch lạc hơn)
+    metrics, topics = run(texts, out_dir=tmp_path, k_range=[3])
+    assert metrics["n_reviews"] == 150      # review < 5 từ bị loại
+    for words in vocab:   # mỗi chủ đề tìm được trùng đúng 1 nhóm từ
+        assert any(set(t.split(", ")) == set(words) for t in topics["top_words"])
+    for f in ["negative_topics.csv", "negative_topics.png", "negative_topics_metrics.json"]:
+        assert (tmp_path / f).exists()

@@ -133,7 +133,27 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - MultinomialNB (theo plan) đoán toàn lớp đa số khi lệch lớp → thay bằng **ComplementNB** (biến thể sklearn khuyến nghị cho văn bản lệch lớp).
 - **Câu hỏi 9**: LogisticRegression tốt nhất (recall lớp chê 0,86). Từ khoá chê mạnh nhất: boring, not, worst, not worth, refund, terrible, garbage, unplayable, crashes; khen: great, best, fun, amazing, 10 10, not bad. Gợi ý cho câu 10: review chê xoay quanh **chán / không đáng tiền / lỗi-crash / hoàn tiền**.
 - Đầu ra: `review_clf.joblib` (pipeline TF-IDF + LR), `review_metrics.json`, `review_top_terms.png`.
-- Câu 10 (topic modeling review tiêu cực): chưa làm.
+- Câu 10: xem mục dưới.
+
+### Câu 10 — chủ đề review tiêu cực (`mining/negative_topics.py`) ✅ 12/10/2026
+
+- 11.739 review chê (≥ 5 từ). TF-IDF (stop word tiếng Anh + từ chung của review game: game, play, just…; min_df 5, max_df 0,5; 5.000 từ) → **NMF**.
+- k = 4..12 chọn theo coherence UMass (top 10 từ) → **k = 8** (−2,127). Chênh lệch giữa k = 5..9 rất nhỏ (−2,13 … −2,18), và UMass không phạt chủ đề bị bỏ sót (test dữ liệu giả cho thấy k nhỏ có thể bỏ cả 1 nhóm) → k là lựa chọn có đối chiếu nội dung, không phải tối ưu tuyệt đối.
+- Tên đặt sau khi xem từ khoá + review ví dụ (`negative_topics.csv`):
+
+| # | Chủ đề | Tỷ lệ review chê | Từ khoá |
+|---|---|---|---|
+| 0 | Gameplay / cốt truyện / chiến đấu kém | 34,2% | story, combat, gameplay, enemies, character |
+| 7 | Nhà phát triển bỏ bê: bug tồn nhiều năm, ra DLC thay vì sửa lỗi, early access kéo dài | 24,1% | years, dlc, update, devs, bugs, content |
+| 2 | Không đáng tiền / pay-to-win | 13,0% | money, waste, pay, worth, win |
+| 1 | Crash, không chạy được | 10,4% | crashes, unplayable, fix, launch, load |
+| 5 | Hết vui, lặp lại (kể cả review mỉa mai) | 7,9% | fun, friends, repetitive, annoying |
+| 4 | Nhàm chán | 4,8% | boring, repetitive, story |
+| 6 | Launcher / tài khoản bên thứ ba (Ubisoft Connect, đăng nhập) | 4,2% | ubisoft, launcher, connect, account, login |
+| 3 | Review dán hàng loạt phản đối việc thu hồi game / đòi quyền hoàn tiền | 1,5% | refund, terminate, companies, allowed |
+
+- **Trả lời câu 10**: ngoài chê nội dung (#0, #4, #5 ≈ 47%), nhóm **kỹ thuật & bảo trì** (#7 bỏ bê/bug tồn + #1 crash + #6 launcher ≈ **39%**) là phần đội phát triển sửa được trực tiếp → nên ưu tiên trước; #2 (giá / pay-to-win) là vấn đề mô hình kinh doanh. #3 là chiến dịch review dán hàng loạt (giống review-bombing), nên tách khỏi phân tích chất lượng.
+- Đầu ra: `negative_topics.csv` (từ khoá, số review, 3 ví dụ), `negative_topics.png`, `negative_review_topics.csv` (game_id → chủ đề, dùng để xem chủ đề theo game), `negative_topics_metrics.json`. Test thêm 1 (tổng **8 passed**).
 
 ## Phase 7 — Đầu ra, kiểm tra, PR
 
