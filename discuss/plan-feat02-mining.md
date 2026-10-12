@@ -120,6 +120,21 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - TF-IDF + LogisticRegression (so với MultinomialNB); lệch lớp → báo F1-macro, không chỉ accuracy.
 - Mở rộng (nếu còn thời gian): gom chủ đề review tiêu cực (câu hỏi 10).
 
+**✅ Xong 12/10/2026** (review thu qua VPN: `python ingestion/bulk_collect.py reviews`, 2.000/2.000 game, 50 review tiếng Anh/game).
+- 57.667 review sau khử trùng + bỏ review rỗng; 78,5% khen → lệch lớp. Chia 80/20 stratified (test 11.534).
+- TF-IDF (1–2 gram, min_df 2, 50k đặc trưng, sublinear tf):
+
+| Mô hình | Accuracy | F1-macro | F1 chê | F1 khen |
+|---|---|---|---|---|
+| Baseline đoán "khen" | 0,785 | 0,440 | 0 | 0,88 |
+| **LogisticRegression** (class_weight balanced) | **0,891** | **0,851** | 0,773 | 0,929 |
+| ComplementNB | 0,875 | 0,823 | 0,727 | 0,919 |
+
+- MultinomialNB (theo plan) đoán toàn lớp đa số khi lệch lớp → thay bằng **ComplementNB** (biến thể sklearn khuyến nghị cho văn bản lệch lớp).
+- **Câu hỏi 9**: LogisticRegression tốt nhất (recall lớp chê 0,86). Từ khoá chê mạnh nhất: boring, not, worst, not worth, refund, terrible, garbage, unplayable, crashes; khen: great, best, fun, amazing, 10 10, not bad. Gợi ý cho câu 10: review chê xoay quanh **chán / không đáng tiền / lỗi-crash / hoàn tiền**.
+- Đầu ra: `review_clf.joblib` (pipeline TF-IDF + LR), `review_metrics.json`, `review_top_terms.png`.
+- Câu 10 (topic modeling review tiêu cực): chưa làm.
+
 ## Phase 7 — Đầu ra, kiểm tra, PR
 
 - Tất cả kết quả ghi vào `mining/outputs/` (model `.joblib`, `.png`, `.csv`, `metrics.json`).

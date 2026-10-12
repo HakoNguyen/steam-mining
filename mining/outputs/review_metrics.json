@@ -1,0 +1,91 @@
+{
+  "n_reviews": 57667,
+  "positive_rate": 0.785,
+  "baseline_majority": {
+    "accuracy": 0.7848,
+    "f1_macro": 0.4397
+  },
+  "logreg": {
+    "accuracy": 0.8913,
+    "f1_macro": 0.8508,
+    "confusion_matrix [[TN, FP], [FN, TP]]": [
+      [
+        2136,
+        346
+      ],
+      [
+        908,
+        8144
+      ]
+    ],
+    "report": {
+      "chê": {
+        "precision": 0.7017082785808147,
+        "recall": 0.8605962933118453,
+        "f1-score": 0.7730727470141151,
+        "support": 2482.0
+      },
+      "khen": {
+        "precision": 0.95924617196702,
+        "recall": 0.8996906760936809,
+        "f1-score": 0.928514422528788,
+        "support": 9052.0
+      },
+      "accuracy": 0.8912779608115138,
+      "macro avg": {
+        "precision": 0.8304772252739174,
+        "recall": 0.8801434847027632,
+        "f1-score": 0.8507935847714516,
+        "support": 11534.0
+      },
+      "weighted avg": {
+        "precision": 0.9038266252889758,
+        "recall": 0.8912779608115138,
+        "f1-score": 0.895064948050947,
+        "support": 11534.0
+      }
+    }
+  },
+  "naive_bayes": {
+    "accuracy": 0.8745,
+    "f1_macro": 0.8228,
+    "confusion_matrix [[TN, FP], [FN, TP]]": [
+      [
+        1928,
+        554
+      ],
+      [
+        893,
+        8159
+      ]
+    ],
+    "report": {
+      "chê": {
+        "precision": 0.6834455866713931,
+        "recall": 0.7767929089443997,
+        "f1-score": 0.7271355836319064,
+        "support": 2482.0
+      },
+      "khen": {
+        "precision": 0.936416848387467,
+        "recall": 0.9013477684489616,
+        "f1-score": 0.9185477061638052,
+        "support": 9052.0
+      },
+      "accuracy": 0.8745448239986128,
+      "macro avg": {
+        "precision": 0.80993121752943,
+        "recall": 0.8390703386966807,
+        "f1-score": 0.8228416448978558,
+        "support": 11534.0
+      },
+      "weighted avg": {
+        "precision": 0.8819799946004637,
+        "recall": 0.8745448239986128,
+        "f1-score": 0.8773577557455485,
+        "support": 11534.0
+      }
+    }
+  },
+  "best_model": "logreg"
+}
