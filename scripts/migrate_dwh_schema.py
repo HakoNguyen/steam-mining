@@ -1,6 +1,7 @@
 """
 Schema Migration Utility for Postgres DWH
-Adds created_at and updated_at audit columns to existing DWH tables.
+Adds created_at and updated_at audit columns to existing DWH tables,
+plus dim_game feature columns used by mining/.
 """
 import sys
 from pathlib import Path
@@ -29,7 +30,17 @@ def migrate_schema():
         "ALTER TABLE fact_player_snapshot ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
         "ALTER TABLE fact_player_snapshot ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
         "ALTER TABLE fact_daily_game_performance ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
-        "ALTER TABLE fact_daily_game_performance ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;"
+        "ALTER TABLE fact_daily_game_performance ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
+        # Mining features (SteamSpy: positive/negative/owners/playtime; Store: languages/categories)
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS positive INT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS negative INT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS owners_min BIGINT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS owners_max BIGINT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS avg_playtime_forever INT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS median_playtime_forever INT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS languages_count SMALLINT;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS has_multiplayer BOOLEAN;",
+        "ALTER TABLE dim_game ADD COLUMN IF NOT EXISTS has_coop BOOLEAN;"
     ]
 
     for stmt in alter_statements:

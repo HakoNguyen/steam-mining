@@ -46,6 +46,13 @@ Migration `scripts/migrate_mining_features.py` (`ALTER TABLE dim_game ADD COLUMN
 
 Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): `process_steamspy_dimensions` ghi thêm positive/negative/owners/playtime; `process_store_dimensions` ghi languages_count/has_multiplayer/has_coop. Giữ nguyên UPSERT idempotent.
 
+**✅ Xong 12/10/2026**
+- [x] 9 cột thêm vào **`scripts/migrate_dwh_schema.py` có sẵn** (không tạo file migration mới; cùng kiểu `ADD COLUMN IF NOT EXISTS`).
+- [x] `load_dimesions.py`: thêm `process_storebrowse_dimensions` (nguồn thay appdetails); gom INSERT dim_game vào `upsert_dim_game`, genre vào `upsert_genre`; SteamSpy ghi positive/negative/owners/playtime và **genre dạng chuỗi** ("Action, Indie" → tách vào `dim_genre`, xử lý xung đột chuỗi/mảng); bỏ qua game SteamSpy chưa có trong dim_game (tránh lỗi FK bridge).
+- Category: multiplayer = {1, 24, 36, 37, 47, 49}, co-op = {9, 38, 39, 48}. Kết quả: 1.108 game multiplayer, 677 co-op.
+- **SteamSpy trả `average_forever = median_forever = 0` cho mọi game** (đã ngừng cung cấp playtime) → playtime không dùng được cho K-Means.
+- [x] Test `transformation/test_load_dimensions.py` (parse owners, đếm ngôn ngữ).
+
 ## Phase 2 — `mining/prepare_data.py` (Task 6.1)
 
 - `load_games()` → DataFrame từ `dim_game` + `fact_daily_game_performance` (avg/peak CCU trung bình các ngày, kèm `snapshot_count`).
