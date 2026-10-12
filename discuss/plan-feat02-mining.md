@@ -83,6 +83,20 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - Đặt tên cụm **sau khi** xem bảng trung bình đặc trưng mỗi cụm (không đặt trước tên "AAA Hits…").
 - Xuất: `kmeans.joblib` (kèm scaler), `elbow_silhouette.png`, `clusters_pca.png` (PCA 2D), `cluster_profile.csv`.
 
+**✅ Xong 12/10/2026** — 1.898 game đủ đặc trưng.
+- Đặc trưng: `log_owners_mid`, `log_avg_ccu`, `log1p(price_vnd)`, `positive_ratio` (bỏ playtime vì SteamSpy trả 0).
+- Silhouette: k=2 0,385 · k=3 0,324 · **k=4 0,336** · k≥5 ≤ 0,283. **k=2 chỉ tách miễn phí / trả phí** (log giá có 2 đỉnh 0 và ~12, chia được không cần phân cụm) → quy tắc: chọn silhouette cao nhất với k ≥ 3 → **k = 4**.
+- **Câu hỏi 7** — tên cụm đặt sau khi xem `cluster_profile.csv` (trung vị):
+
+| Cụm | Tên | Số game | Owners | CCU | Giá | % positive | Ví dụ |
+|---|---|---|---|---|---|---|---|
+| 3 | Hit lớn đang hoạt động | 357 | 3,5M | 2.314 | 316k | 0,90 | PUBG, Apex, CS2, TF2 |
+| 0 | Game trả phí ổn định | 991 | 1,5M | 114 | 220k | 0,89 | Guacamelee!, Chivalry, Braveland |
+| 2 | F2P tầm trung | 333 | 1,5M | 47 | 0 | 0,84 | Warface: Clutch, Black Squad |
+| 1 | Game nguội / bị chê | 217 | 1,5M | 5 | 16k | 0,60 | Z1 Battle Royale, EA FC 24/25 |
+
+- Đầu ra: `kmeans.joblib`, `elbow_silhouette.png`, `clusters_pca.png`, `cluster_profile.csv`, `game_clusters.csv`, `kmeans_metrics.json`.
+
 ## Phase 5 — `mining/cart_tree.py` (Task 6.3, câu hỏi 8)
 
 - Nhãn: game thuộc **top 25% `owners_mid` trong thể loại chính** của nó (theo đề xuất "hiệu suất cao trong thể loại").
