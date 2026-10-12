@@ -142,9 +142,16 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - Mỗi task một commit, push `feat/02`. Mở PR `feat/02` → `main` cho Hiếu review (không tự merge).
   - Lưu ý: `feat/02` đang chứa 3 commit chưa merge của `feat/01` → nhờ Hiếu merge `feat/01` trước để PR chỉ còn phần mining.
 
+**✅ Xong 12/10/2026** (trừ PR)
+- [x] Mọi kết quả trong `mining/outputs/`; `.gitignore` mở `mining/outputs/*.csv|*.json` để commit được.
+- [x] `mining/test_mining.py`: 5 test (add_features, luật kết hợp, K-Means, CART, phân loại review) trên dữ liệu giả + 2 test loader → `python -m pytest -q mining transformation` = **7 passed**.
+- [x] Mỗi phase một commit, push `feat/02`.
+- [ ] PR `feat/02` → `main`: **chưa mở** (Huynh chỉ yêu cầu push) — mở khi Hiếu merge `feat/01` xong.
+- Chạy lại toàn bộ: `docker compose up -d postgres-dwh minio-datalake` → `python scripts/migrate_dwh_schema.py` → `python ingestion/bulk_collect.py 2` (+ `reviews` nếu vào được Store) → `python transformation/load_dimesions.py` → `python transformation/load_facts.py` → `python mining/{association_rules,kmeans_clustering,cart_tree,review_classifier}.py`.
+
 ## Thứ tự làm & việc cần hỏi Hiếu
 
-Thứ tự: Phase 0 → 1 → 2 → **3 (luật kết hợp, dữ liệu tag sẵn nhất)** → 4 → 5 → 7 → 6.
+Thứ tự: Phase 0 → 1 → 2 → **3 (luật kết hợp, dữ liệu tag sẵn nhất)** → 4 → 5 → 7 → 6. **Đã làm xong 0–7 ngày 12/10/2026 (trừ mở PR).**
 
 Hỏi Hiếu:
 1. Xin dump DWH / dữ liệu MinIO đang tích lũy (nếu có).

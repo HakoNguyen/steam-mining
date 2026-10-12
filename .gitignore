@@ -50,6 +50,8 @@ htmlcov/
 *.json
 !dashboard/package.json
 !dags/config/*.json
+!mining/outputs/*.csv
+!mining/outputs/*.json
 
 steam_sample_data.json
 
