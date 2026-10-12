@@ -70,6 +70,12 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - Câu "tổ hợp nào gắn với đánh giá tích cực cao": thêm item ảo `HIGH_POSITIVE` cho game có `positive_ratio ≥ 0.9` (ngưỡng ghi rõ), lọc luật có hậu tố = `HIGH_POSITIVE`.
 - Xuất: `rules.csv` (support, confidence, lift), biểu đồ top 15 luật theo lift.
 
+**✅ Xong 12/10/2026** — `min_support = 0.03` (0.05 chỉ ra 9 luật HIGH_POSITIVE, toàn luật 1 tag), `max_len = 4`, lift ≥ 1.2.
+- 1.916 giao dịch → 466 itemset, 1.042 luật tag–tag, **23 luật → HIGH_POSITIVE** (tỷ lệ nền 37,4%).
+- Tag–tag: luật lift cao nhất là nhóm đồng nghĩa (FPS ↔ First-Person + Shooter, lift ~6–7) — đúng nhưng hiển nhiên.
+- **Câu hỏi 6**: tổ hợp gắn với ≥ 90% review tích cực: Great Soundtrack (conf 0,66, lift 1,76), Great Soundtrack + Singleplayer (1,75), Difficult (1,72), Indie + Singleplayer (1,68), Horror + Singleplayer (1,64), 2D (1,62), Pixel Graphics, Puzzle, Story Rich… → game **đơn, indie, nặng nghệ thuật/cốt truyện** được đánh giá cao hơn hẳn; không có tag multiplayer/F2P nào lọt top.
+- Đầu ra: `rules.csv`, `rules_high_positive.csv`, `rules_top15_lift.png`, `rules_high_positive_top15.png`.
+
 ## Phase 4 — `mining/kmeans_clustering.py` (Task 6.2, câu hỏi 7)
 
 - Đặc trưng: `log1p(owners_mid hoặc avg_ccu)`, `price_vnd`, `positive_ratio`, `log1p(median_playtime)` → `StandardScaler`.
