@@ -3,6 +3,7 @@ import json
 import time
 from datetime import datetime
 from io import BytesIO
+from urllib.parse import quote
 from dotenv import dotenv_values
 from minio import Minio
 
@@ -90,6 +91,21 @@ def collect_steamspy(appid, client):
     data = fetch_steam_api(url)
     if data:
         save_json_to_minio(client, "steamspy", appid, data)
+
+def collect_store_browse(appids, client):
+    # Thay appdetails khi store.steampowered.com bị chặn (mạng VN): cùng metadata, qua api.steampowered.com, 50 app/request
+    for i in range(0, len(appids), 50):
+        batch = appids[i:i + 50]
+        input_json = json.dumps({
+            "ids": [{"appid": a} for a in batch],
+            "context": {"language": "english", "country_code": "VN"},
+            "data_request": {"include_basic_info": True, "include_release": True,
+                             "include_supported_languages": True, "include_reviews": True},
+        })
+        data = fetch_steam_api(f"https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={quote(input_json)}")
+        if data:
+            save_json_to_minio(client, "storebrowse", f"batch{batch[0]}", data)
+        time.sleep(1)
 
 def collect_reviews(appid, client):
     url = f"https://store.steampowered.com/appreviews/{appid}?json=1&language=english&cursor=*&num_per_page=50"
