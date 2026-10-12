@@ -105,6 +105,15 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - Đánh giá: Accuracy, Precision, Recall, F1, confusion matrix, so với baseline đoán lớp đa số.
 - Xuất: `cart.joblib`, `tree.png` (`plot_tree`), `tree_rules.txt` (`export_text`, luật nếu–thì), `feature_importance.png`, `metrics.json`.
 
+**✅ Xong 12/10/2026** — 1.878 game, 52 đặc trưng.
+- Thể loại chính = genre gameplay **hiếm nhất** của game (bỏ Indie / Free To Play / Early Access; Action + RPG → RPG); thể loại < 20 game gộp "Other".
+- Nhãn: owners SteamSpy là khoảng rời rạc → "≥ phân vị 75" cho 39% dương (Strategy 69%). Sửa: xếp hạng trong thể loại theo owners, **hòa thì theo tổng review** (proxy doanh số) → đúng **25,1%** dương.
+- `publisher_prior_games` chỉ đếm game trong tập 2.000 game đã thu.
+- Depth chọn bằng 5-fold CV (F1): 3 → 0,461 · 4 → 0,445 · 5 → 0,446 · 6 → 0,413 → **max_depth = 3**.
+- Test (376 game): accuracy 0,545 · precision 0,289 · recall 0,547 · **F1 0,378 · ROC-AUC 0,587**; baseline đoán đa số: accuracy 0,747, F1 0; baseline đoán ngẫu nhiên theo tỷ lệ lớp: F1 0,273.
+- **Câu hỏi 8**: đặc trưng quan trọng: `languages_count` (0,58), `price_vnd` (0,23), tag Adventure / Survival / RPG. Luật chính: **> 8 ngôn ngữ** và giá ≤ 492k không có tag Adventure → top 25%; ≤ 8 ngôn ngữ, không có tag RPG nhưng có Survival → top 25%.
+- **Kết luận trung thực**: tín hiệu có nhưng yếu (AUC 0,59). Cả 2.000 game đã là game phổ biến (≥ ~500k owners) nên đặc trưng trước phát hành khó phân biệt thêm; muốn mạnh hơn cần mẫu gồm cả game ít phổ biến (SteamSpy trang 2+). Tag do người chơi gắn sau phát hành → không thuần "trước phát hành" (chấp nhận như plan, cần ghi trong báo cáo).
+
 ## Phase 6 — Phân loại văn bản review (câu hỏi 9, ngoài issue #8 → hỏi Hiếu ai làm)
 
 - Dữ liệu: JSON `reviews/` trong MinIO (Reviews API, nhãn `voted_up`), khử trùng theo `recommendationid`.

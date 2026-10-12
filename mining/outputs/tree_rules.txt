@@ -1,0 +1,22 @@
+|--- languages_count <= 8.50
+|   |--- tag_RPG <= 0.50
+|   |   |--- tag_Survival <= 0.50
+|   |   |   |--- class: 0
+|   |   |--- tag_Survival >  0.50
+|   |   |   |--- class: 1
+|   |--- tag_RPG >  0.50
+|   |   |--- price_vnd <= 237000.00
+|   |   |   |--- class: 0
+|   |   |--- price_vnd >  237000.00
+|   |   |   |--- class: 0
+|--- languages_count >  8.50
+|   |--- price_vnd <= 492500.00
+|   |   |--- tag_Adventure <= 0.50
+|   |   |   |--- class: 1
+|   |   |--- tag_Adventure >  0.50
+|   |   |   |--- class: 0
+|   |--- price_vnd >  492500.00
+|   |   |--- languages_count <= 14.50
+|   |   |   |--- class: 1
+|   |   |--- languages_count >  14.50
+|   |   |   |--- class: 1
