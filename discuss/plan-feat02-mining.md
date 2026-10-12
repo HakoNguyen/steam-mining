@@ -61,6 +61,9 @@ Sửa `transformation/load_dimesions.py` (file của Hiếu → báo trước): 
 - Đặc trưng dẫn xuất: `positive_ratio = positive/(positive+negative)`, `owners_mid`, `log1p` cho CCU/owners/playtime (phân bố lệch rất mạnh).
 - Thiếu dữ liệu: bỏ game có `positive+negative < 50` khỏi phân tích tỷ lệ (tỷ lệ không tin cậy); playtime 0 coi là thiếu.
 
+**✅ Xong 12/10/2026** — [x] `load_games`, [x] `load_tag_transactions`, [x] `load_genres`, [x] `add_features` (tách riêng để test không cần DB; thêm `release_month`). `python mining/prepare_data.py` in tóm tắt.
+- 1.956 game; `positive_ratio` có ở 1.899 game (trung vị 0,87; 37,4% game ≥ 0,9); 1.916 giao dịch tag (9,9 tag/game); 25 genre (Action 1.188, Indie 807, Adventure 746…).
+
 ## Phase 3 — `mining/association_rules.py` (Task 6.4, câu hỏi 6)
 
 - `TransactionEncoder` + `fpgrowth` (mlxtend), `min_support` ≈ 0.05 (chỉnh theo số game), `association_rules(metric="lift", min_threshold=1.2)`.
