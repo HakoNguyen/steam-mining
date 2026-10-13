@@ -46,24 +46,36 @@ def process_store_dimensions(conn, client):
             continue
 
         for appid_str, game_data in payload.items():
+            if not isinstance(game_data, dict):
+                continue
             if not game_data.get("success") or "data" not in game_data:
                 continue
 
             data = game_data["data"]
-            game_id = int(appid_str)
-            game_title = data.get("name", "Unknown Game")[:255]
-            app_type = data.get("type", "game")[:20]
-            is_free = data.get("is_free", False)
+            if not isinstance(data, dict):
+                continue
 
-            price_overview = data.get("price_overview", {})
+            try:
+                game_id = int(appid_str)
+            except (ValueError, TypeError):
+                continue
+
+            game_title = str(data.get("name", "Unknown Game"))[:255]
+            app_type = str(data.get("type", "game"))[:20]
+            is_free = bool(data.get("is_free", False))
+
+            price_overview = data.get("price_overview") if isinstance(data.get("price_overview"), dict) else {}
             price_raw = price_overview.get("final", 0) if not is_free else 0
             price_vnd = float(price_raw) / 100.0
 
-            release_date_str = data.get('release_date', {}).get("date", "")
+            release_date_dict = data.get("release_date") if isinstance(data.get("release_date"), dict) else {}
+            release_date_str = str(release_date_dict.get("date", ""))
             release_date_iso = parse_release_date(release_date_str)
 
-            developers = ", ".join(data.get("developers", []))[:255]
-            publishers = ", ".join(data.get("publishers", []))[:255]
+            devs = data.get("developers")
+            developers = ", ".join(devs)[:255] if isinstance(devs, list) else ""
+            pubs = data.get("publishers")
+            publishers = ", ".join(pubs)[:255] if isinstance(pubs, list) else ""
 
             query = """
                 INSERT INTO dim_game (
@@ -87,26 +99,29 @@ def process_store_dimensions(conn, client):
             ))
 
             genres = data.get("genres", [])
-            for g in genres:
-                genre_name = g.get("description", "").strip()
-                if not genre_name:
-                    continue
+            if isinstance(genres, list):
+                for g in genres:
+                    if not isinstance(g, dict):
+                        continue
+                    genre_name = str(g.get("description", "")).strip()
+                    if not genre_name:
+                        continue
 
-                cursor.execute(
-                    "INSERT INTO dim_genre (genre_name) VALUES (%s) ON CONFLICT (genre_name) DO NOTHING;",
-                    (genre_name,)
-                )
-                cursor.execute(
-                    "SELECT genre_id FROM dim_genre WHERE genre_name = %s;",
-                    (genre_name,)
-                )
-                genre_row = cursor.fetchone()
-                if genre_row:
-                    genre_id = genre_row[0]
                     cursor.execute(
-                        "INSERT INTO bridge_game_genre (game_id, genre_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
-                        (game_id, genre_id)
+                        "INSERT INTO dim_genre (genre_name) VALUES (%s) ON CONFLICT (genre_name) DO NOTHING;",
+                        (genre_name,)
                     )
+                    cursor.execute(
+                        "SELECT genre_id FROM dim_genre WHERE genre_name = %s;",
+                        (genre_name,)
+                    )
+                    genre_row = cursor.fetchone()
+                    if genre_row:
+                        genre_id = genre_row[0]
+                        cursor.execute(
+                            "INSERT INTO bridge_game_genre (game_id, genre_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
+                            (game_id, genre_id)
+                        )
 
             processed_count += 1
 
@@ -131,9 +146,22 @@ def process_steamspy_dimensions(conn, client):
         if not game_id:
             continue
 
+        try:
+            game_id = int(game_id)
+        except (ValueError, TypeError):
+            continue
+
+        game_name = str(payload.get("name", f"AppID {game_id}"))[:255]
+
+        # Ensure game exists in dim_game to satisfy bridge foreign key
+        cursor.execute(
+            "INSERT INTO dim_game (game_id, game_title) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
+            (game_id, game_name)
+        )
+
         positive = payload.get("positive", 0) or 0
         negative = payload.get("negative", 0) or 0
-        total_reviews = positive + negative
+        total_reviews = int(positive) + int(negative)
 
         cursor.execute(
             "UPDATE dim_game SET total_reviews = %s, updated_at = CURRENT_TIMESTAMP WHERE game_id = %s;",
