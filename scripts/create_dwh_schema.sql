@@ -16,6 +16,18 @@ CREATE TABLE IF NOT EXISTS raw.steam_reviews_json (
     payload JSONB
 );
 
+-- Daily Seed List: snapshot Top 50 game mỗi ngày (ingestion/catalog.py ghi, mọi DAG đọc chung)
+CREATE TABLE IF NOT EXISTS raw.game_catalog_daily (
+    catalog_date DATE NOT NULL,
+    ranking_order INT NOT NULL,
+    game_id INT NOT NULL,
+    game_title VARCHAR(255),
+    ccu_2weeks INT,
+    source VARCHAR(50) DEFAULT 'steamspy_top100in2weeks',  -- 'carry_over' | 'fallback' khi API lỗi
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (catalog_date, game_id)
+);
+
 -- =============================================================================
 -- 2. Dimensions & Bridge Tables (Tầng Chiều dữ liệu DWH Star Schema)
 -- =============================================================================

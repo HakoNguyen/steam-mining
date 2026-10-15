@@ -19,7 +19,7 @@ default_args = {
 }
 
 def run_daily_reviews_collection():
-    target_appids = get_target_appids(limit=50)
+    target_appids = get_target_appids()
     client = get_minio_client()
     print(f'Found {len(target_appids)} target appids')
 

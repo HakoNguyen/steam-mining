@@ -11,7 +11,7 @@
 * **Nhánh làm việc chính:** `feat/01` (đã sync với `main`)
 
 ### 🌐 Thông số Docker Containers & Cổng truy cập (Local):
-* 🗄️ **PostgreSQL 16 (DWH):** `localhost:5432` | DB main: `steam_dwh` | DB phụ: `airflow_db`, `metabase_db` (User: `admin` / Pass: `adminpassword123`)
+* 🗄️ **PostgreSQL 16 (DWH):** `localhost:5433` (trong Docker network: `postgres-dwh:5432`) | DB main: `steam_dwh` | DB phụ: `airflow_db`, `metabase_db` (User: `admin` / Pass: `adminpassword123`)
 * 🪣 **MinIO S3 Data Lake:** API `localhost:9000` | Web UI `http://localhost:9001` (User: `admin` / Pass: `adminpassword123`) | Bucket: `raw-steam-data`
 * ⚙️ **Apache Airflow:** `http://localhost:8080` (User: `admin` / Pass: `admin`)
 * 📊 **Metabase BI:** `http://localhost:3000`
@@ -32,17 +32,19 @@
     ├── Xây dựng docker-compose.yml 4 services (Postgres, MinIO, Airflow, Metabase)
     └── Bật thành công 4 Containers xanh (Healthy & Running)
 
-[/] Phase 2: Khởi tạo Schema & Data Lake Storage (ĐANG THỰC HIỆN)
+[x] Phase 2: Khởi tạo Schema & Data Lake Storage
     ├── [x] Tạo Bucket 'raw-steam-data' trên MinIO Console (port 9001)
-    └── [ ] Viết DDL Star Schema scripts/create_dwh_schema.sql (Raw JSONB, Dimensions, Facts, Bridge)
+    └── [x] Viết DDL Star Schema scripts/create_dwh_schema.sql (Raw JSONB, Dimensions, Facts, Bridge)
 
-[ ] Phase 3: Module Ingestion & Airflow DAGs
-    ├── Nâng cấp collector.py (bypass TLS với curl_cffi, retry logic, rate limit)
-    └── Viết 3 Airflow DAGs (Hourly CCU, Weekly Metadata, Daily Reviews) đẩy JSON thô vào MinIO S3
+[x] Phase 3: Module Ingestion & Airflow DAGs
+    ├── [x] collector.py (curl_cffi, retry) ghi JSON thô vào MinIO, partition year=/month=/day=
+    ├── [x] DAGs: Hourly CCU, Daily Metadata (Store + SteamSpy), Daily Reviews
+    └── [x] (15/10) Dynamic Daily Catalog Top 50: raw.game_catalog_daily + DAG steam_daily_catalog_sync
 
-[ ] Phase 4: Transformation & ELT Pipeline (Raw ➔ DWH)
-    ├── Nạp JSONB từ MinIO vào schema raw trong Postgres
-    └── Transform dữ liệu bóc tách nạp vào dim_game, dim_tag, dim_genre, bridge_* và fact_*
+[/] Phase 4: Transformation & ELT Pipeline (Raw ➔ DWH) — đang chuẩn hóa sang SQLMesh
+    ├── [x] Bản tạm bằng Python: transformation/load_dimesions.py, load_facts.py (MinIO ➔ Star Schema)
+    ├── [ ] Nạp JSONB từ MinIO vào schema raw (incremental theo partition ngày, gồm reviews)
+    └── [ ] Chuyển transformation sang SQLMesh (staging ➔ core ➔ marts + audits)
 
 [ ] Phase 5: Khai phá dữ liệu (Data Mining)
     ├── Apriori / FP-Growth (Luật kết hợp Tag game)
@@ -65,8 +67,17 @@
 * Đã clean volume (`docker-compose down -v`) và đổi tên chuẩn file [scripts/init_databases.sql](file:///d:/DE/projects/DWH-DM/scripts/init_databases.sql).
 * Khởi chạy thành công 4 services, Postgres báo `healthy`.
 
+### 🔹 Bước 2 (15/10/2026): Dọn dẹp & Dynamic Daily Catalog (Giai đoạn 1 của kế hoạch chuẩn hóa)
+* Xóa file rác: `steam_lake.duckdb`, `scripts/init_duckdb_views.py`, `ingestion/raw_ccu.db`, thư mục rỗng `dags/transform_/`.
+* **Quyết định:** bảng catalog đặt ở `raw.game_catalog_daily` (không phải `public.dim_game_catalog_daily`) vì là dữ liệu nguồn do Python ghi; SQLMesh sau này đọc như source.
+* `ingestion/catalog.py`: lấy SteamSpy `top100in2weeks`, sắp theo `ccu` giảm dần, giữ Top 50. API lỗi ➔ copy snapshot gần nhất (`carry_over`), chưa có ➔ danh sách cứng (`fallback`). Có advisory lock, chạy lại không nhân bản.
+* `get_target_appids()` đọc catalog; nếu hôm nay chưa có snapshot thì tự sync. CCU nay dùng đủ 50 game (trước là 20).
+* DAG metadata chuyển từ `@weekly` sang `@daily` để game mới vào Top 50 có metadata trong ngày.
+* `load_facts.py` lấy tên game từ catalog thay cho placeholder `"AppID xxx"`; đã backfill 3 game ma cũ.
+* Dữ liệu trước 15/10 coi là dữ liệu test.
+
 ---
 
 ## 🎯 BƯỚC TIẾP THEO (NEXT ACTION)
-1. Hoàn thành file [scripts/create_dwh_schema.sql](file:///d:/DE/projects/DWH-DM/scripts/create_dwh_schema.sql) cho DWH Star Schema.
-2. Thực thi script DDL vào Postgres `steam_dwh` database.
+1. Giai đoạn 2: loader MinIO ➔ `raw.*` (games, ccu, reviews) theo partition ngày + bảng watermark, bỏ full scan MinIO.
+2. Giai đoạn 3: cài SQLMesh, viết models staging ➔ core ➔ marts.

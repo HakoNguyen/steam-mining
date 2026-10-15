@@ -19,7 +19,7 @@ default_args = {
 }
 
 def run_hourly_ccu_collection():
-    target_appids = get_target_appids(limit=20)
+    target_appids = get_target_appids()
     client = get_minio_client()
 
     print(f"Airflow CCU: Starting for {len(target_appids)} games")

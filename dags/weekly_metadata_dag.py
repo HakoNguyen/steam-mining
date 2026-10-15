@@ -19,7 +19,7 @@ default_args = {
 }
 
 def run_weekly_metadata_collection():
-    target_appids = get_target_appids(limit=50)
+    target_appids = get_target_appids()
     client = get_minio_client()
 
     print(f"[Airflow Weekly DAG] Collecting Metadata & SteamSpy for"f" {len(target_appids)} games...")
@@ -30,10 +30,10 @@ def run_weekly_metadata_collection():
 with DAG(
     'steam_weekly_metadata_ingestion',
     default_args=default_args,
-    description='Weekly metadata collection via Airflow',
-    schedule_interval='@weekly', 
+    description='Daily metadata collection via Airflow (game mới vào catalog cần metadata trong ngày)',
+    schedule_interval='@daily',
     catchup=False,
-    tags=['steam', 'ingestion', 'weekly', 'metadata'],
+    tags=['steam', 'ingestion', 'daily', 'metadata'],
 ) as dag:
     
     task_collect_metadata = PythonOperator(

@@ -43,9 +43,19 @@ def process_ccu_snapshots(conn, client):
         else:
             continue
 
+        # Placeholder lấy tên từ Daily Catalog, chỉ dùng "AppID xxx" khi game không có trong catalog
         cursor.execute(
-            "INSERT INTO dim_game (game_id, game_title) VALUES (%s, %s) ON CONFLICT DO NOTHING;",
-            (game_id, f"AppID {game_id}")
+            """
+            INSERT INTO dim_game (game_id, game_title)
+            VALUES (%s, COALESCE(
+                (SELECT game_title FROM raw.game_catalog_daily
+                 WHERE game_id = %s AND game_title IS NOT NULL
+                 ORDER BY catalog_date DESC LIMIT 1),
+                %s
+            ))
+            ON CONFLICT DO NOTHING;
+            """,
+            (game_id, game_id, f"AppID {game_id}")
         )
 
         date_key = ensure_dim_date(cursor, snapshot_dt)
