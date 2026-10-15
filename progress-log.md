@@ -43,7 +43,7 @@
 
 [/] Phase 4: Transformation & ELT Pipeline (Raw ➔ DWH) — đang chuẩn hóa sang SQLMesh
     ├── [x] Bản tạm bằng Python: transformation/load_dimesions.py, load_facts.py (MinIO ➔ Star Schema)
-    ├── [ ] Nạp JSONB từ MinIO vào schema raw (incremental theo partition ngày, gồm reviews)
+    ├── [x] (15/10) Nạp JSONB từ MinIO vào schema raw (incremental theo partition ngày + watermark, gồm reviews)
     └── [ ] Chuyển transformation sang SQLMesh (staging ➔ core ➔ marts + audits)
 
 [ ] Phase 5: Khai phá dữ liệu (Data Mining)
@@ -76,8 +76,17 @@
 * `load_facts.py` lấy tên game từ catalog thay cho placeholder `"AppID xxx"`; đã backfill 3 game ma cũ.
 * Dữ liệu trước 15/10 coi là dữ liệu test.
 
+### 🔹 Bước 3 (15/10/2026): Tầng Raw Staging (Giai đoạn 2)
+* `transformation/load_raw.py`: MinIO ➔ `raw.steam_{store,steamspy,ccu,reviews}_json` (1 file = 1 dòng, khóa `object_key`, có `appid`, `partition_date`, `fetched_at` parse từ tên file).
+* Incremental: `raw.load_watermark` lưu ngày partition cuối của từng nguồn; mỗi lần chỉ duyệt các partition `>= watermark` (duyệt prefix year=/month=/day= không recursive), bỏ qua key đã có.
+* Bỏ 2 bảng raw cũ không dùng (`raw.steam_games_json`, `raw.steam_reviews_json` dạng 1 review/dòng).
+* Loader dim/fact cũ chuyển sang đọc từ `raw.*` ➔ **không còn full scan MinIO**. Store/SteamSpy chỉ lấy payload mới nhất mỗi game. `run_dimension_update` giờ raise lỗi để Airflow báo FAILED.
+* DAG transform: `task_load_raw >> task_transform_dimensions >> task_transform_facts`.
+* Kết quả lần đầu: store 109, steamspy 107, ccu 1207, reviews 231 file — khớp 100% với MinIO; lần chạy lại nạp 0 file.
+* Ghi nhận: Reviews API trả cùng ~50 review "hữu ích nhất" mỗi ngày ➔ hiện chỉ có 2.664 review khác nhau / 51 game.
+
 ---
 
 ## 🎯 BƯỚC TIẾP THEO (NEXT ACTION)
-1. Giai đoạn 2: loader MinIO ➔ `raw.*` (games, ccu, reviews) theo partition ngày + bảng watermark, bỏ full scan MinIO.
-2. Giai đoạn 3: cài SQLMesh, viết models staging ➔ core ➔ marts.
+1. Giai đoạn 3: cài SQLMesh vào image Airflow, viết models staging ➔ core ➔ marts đọc từ `raw.*` (thay loader Python).
+2. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.

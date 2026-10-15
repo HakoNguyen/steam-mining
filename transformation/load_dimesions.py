@@ -6,12 +6,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from transformation.db_connect import (
-    get_db_connection,
-    get_minio_client,
-    get_minio_json,
-    MINIO_BUCKET_NAME
-)
+from transformation.db_connect import get_db_connection
+
+# Mỗi game chỉ lấy payload mới nhất trong raw (thay cho full scan MinIO)
+LATEST_PAYLOAD_QUERY = """
+    SELECT DISTINCT ON (appid) payload
+    FROM {table}
+    ORDER BY appid, fetched_at DESC;
+"""
 
 
 def parse_release_date(date_str):
@@ -33,15 +35,15 @@ def parse_release_date(date_str):
     return None
 
 
-def process_store_dimensions(conn, client):
+def process_store_dimensions(conn):
     cursor = conn.cursor()
-    objects = client.list_objects(MINIO_BUCKET_NAME, prefix="store/", recursive=True)
+    cursor.execute(LATEST_PAYLOAD_QUERY.format(table="raw.steam_store_json"))
+    payloads = [row[0] for row in cursor.fetchall()]
 
     print("[Dimension Loader] Processing Store Details...")
     processed_count = 0
 
-    for obj in objects:
-        payload = get_minio_json(client, obj.object_name)
+    for payload in payloads:
         if not payload or not isinstance(payload, dict):
             continue
 
@@ -130,15 +132,15 @@ def process_store_dimensions(conn, client):
     print(f"[Dimension Loader] Processed {processed_count} store games.")
 
 
-def process_steamspy_dimensions(conn, client):
+def process_steamspy_dimensions(conn):
     cursor = conn.cursor()
-    objects = client.list_objects(MINIO_BUCKET_NAME, prefix="steamspy/", recursive=True)
+    cursor.execute(LATEST_PAYLOAD_QUERY.format(table="raw.steam_steamspy_json"))
+    payloads = [row[0] for row in cursor.fetchall()]
     print("[Dimension Loader] Processing SteamSpy Details...")
 
     processed_count = 0
 
-    for obj in objects:
-        payload = get_minio_json(client, obj.object_name)
+    for payload in payloads:
         if not payload or not isinstance(payload, dict):
             continue
 
@@ -205,16 +207,16 @@ def process_steamspy_dimensions(conn, client):
 
 def run_dimension_update():
     conn = get_db_connection()
-    client = get_minio_client()
 
     try:
-        process_store_dimensions(conn, client)
-        process_steamspy_dimensions(conn, client)
+        process_store_dimensions(conn)
+        process_steamspy_dimensions(conn)
         print("[Dimension Loader] All dimensions processed successfully!")
 
     except Exception as e:
         print(f"[Dimension Loader] Error: {e}")
         conn.rollback()
+        raise e
 
     finally:
         if conn:

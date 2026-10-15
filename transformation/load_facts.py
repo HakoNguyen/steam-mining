@@ -1,7 +1,5 @@
 import sys
-import re
 from pathlib import Path
-from datetime import datetime
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
@@ -9,38 +7,25 @@ if str(BASE_DIR) not in sys.path:
 
 from transformation.db_connect import (
     get_db_connection,
-    get_minio_client,
-    get_minio_json,
     ensure_dim_date,
-    ensure_dim_time,
-    MINIO_BUCKET_NAME
+    ensure_dim_time
 )
 
-def process_ccu_snapshots(conn, client):
+def process_ccu_snapshots(conn):
     cursor = conn.cursor()
-    objects = client.list_objects(MINIO_BUCKET_NAME, prefix="ccu/", recursive=True)
+    # Đọc từ raw.steam_ccu_json (appid, fetched_at đã được parse sẵn khi nạp raw)
+    cursor.execute("SELECT appid, fetched_at, payload FROM raw.steam_ccu_json ORDER BY fetched_at;")
+    raw_rows = cursor.fetchall()
     print("[Fact Loader] Processing CCU Snapshots...")
-    
+
     processed_count = 0
-    for obj in objects:
-        payload = get_minio_json(client, obj.object_name)
+    for game_id, snapshot_dt, payload in raw_rows:
         if not payload or not isinstance(payload, dict):
             continue
 
         response_data = payload.get("response", {})
         player_count = response_data.get("player_count")
         if player_count is None:
-            continue
-
-        match = re.search(r"ccu_(\d+)_(\d{8}_\d{6})\.json", obj.object_name)
-        if match:
-            game_id = int(match.group(1))
-            dt_str = match.group(2)
-            try:
-                snapshot_dt = datetime.strptime(dt_str, "%Y%m%d_%H%M%S")
-            except ValueError:
-                snapshot_dt = datetime.utcnow()
-        else:
             continue
 
         # Placeholder lấy tên từ Daily Catalog, chỉ dùng "AppID xxx" khi game không có trong catalog
@@ -119,9 +104,8 @@ def run_fact_pipeline():
     Main runner for fact loading pipeline.
     """
     conn = get_db_connection()
-    client = get_minio_client()
     try:
-        process_ccu_snapshots(conn, client)
+        process_ccu_snapshots(conn)
         aggregate_daily_game_performance(conn)
         print("[Fact Pipeline] All fact tables populated successfully! 🎉")
     except Exception as e:

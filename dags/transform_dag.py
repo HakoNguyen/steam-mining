@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
+from transformation.load_raw import run_raw_load
 from transformation.load_dimesions import run_dimension_update
 from transformation.load_facts import run_fact_pipeline
 
@@ -22,11 +23,16 @@ default_args = {
 with DAG(
     'transformation_staging_to_warehouse',
     default_args=default_args,
-    description='Transform Staging to Data Warehouse',
-    schedule_interval='15 * * * * ',
+    description='MinIO ➔ raw (incremental) ➔ Data Warehouse',
+    schedule_interval='15 * * * *',
     catchup=False,
     tags=['steam', 'transformation', 'warehouse', 'dimension', 'fact'],
 ) as dag:
+
+    task_load_raw = PythonOperator(
+        task_id='task_load_raw',
+        python_callable=run_raw_load,
+    )
 
     task_transform_dimensions = PythonOperator(
         task_id='task_transform_dimensions',
@@ -38,4 +44,4 @@ with DAG(
         python_callable=run_fact_pipeline,
     )
 
-    task_transform_dimensions >> task_transform_facts
+    task_load_raw >> task_transform_dimensions >> task_transform_facts

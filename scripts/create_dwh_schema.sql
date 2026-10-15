@@ -3,17 +3,26 @@
 -- =============================================================================
 CREATE SCHEMA IF NOT EXISTS raw;
 
-CREATE TABLE IF NOT EXISTS raw.steam_games_json (
-    appid INT PRIMARY KEY,
-    fetched_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    payload JSONB
+-- Mỗi file JSON trên MinIO = 1 dòng (transformation/load_raw.py nạp tăng dần theo partition ngày).
+-- Cùng cấu trúc cho 4 nguồn: steam_store_json, steam_steamspy_json, steam_ccu_json, steam_reviews_json
+CREATE TABLE IF NOT EXISTS raw.steam_store_json (
+    object_key VARCHAR(255) PRIMARY KEY,                 -- store/year=YYYY/month=MM/day=DD/store_<appid>_<ts>.json
+    appid INT NOT NULL,
+    partition_date DATE NOT NULL,
+    fetched_at TIMESTAMP WITH TIME ZONE NOT NULL,       -- parse từ timestamp trong tên file (UTC)
+    payload JSONB NOT NULL,
+    loaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS raw.steam_steamspy_json (LIKE raw.steam_store_json INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS raw.steam_ccu_json (LIKE raw.steam_store_json INCLUDING ALL);
+CREATE TABLE IF NOT EXISTS raw.steam_reviews_json (LIKE raw.steam_store_json INCLUDING ALL);
 
-CREATE TABLE IF NOT EXISTS raw.steam_reviews_json (
-    review_id VARCHAR(50) PRIMARY KEY,
-    appid INT,
-    fetched_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    payload JSONB
+-- Watermark: ngày partition cuối cùng đã nạp cho từng nguồn
+CREATE TABLE IF NOT EXISTS raw.load_watermark (
+    source VARCHAR(50) PRIMARY KEY,                     -- store | steamspy | ccu | reviews
+    last_partition_date DATE NOT NULL,
+    files_loaded INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Daily Seed List: snapshot Top 50 game mỗi ngày (ingestion/catalog.py ghi, mọi DAG đọc chung)
