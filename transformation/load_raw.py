@@ -22,6 +22,8 @@ RAW_TABLES = {
     "steamspy": "raw.steam_steamspy_json",
     "ccu": "raw.steam_ccu_json",
     "reviews": "raw.steam_reviews_json",
+    # 1 file = 1 batch 50 game của IStoreBrowseService; appid là game đầu batch
+    "storebrowse": "raw.steam_storebrowse_json",
 }
 
 PARTITION_PATTERN = re.compile(r"year=(\d{4})/month=(\d{2})/day=(\d{2})/$")

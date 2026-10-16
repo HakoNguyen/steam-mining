@@ -1,7 +1,7 @@
 MODEL (
   name marts.mart_executive_overview,
   kind VIEW,
-  description 'Tổng quan ngày gần nhất đã đủ dữ liệu: CCU, giá, thể loại, thứ hạng'
+  description 'Tổng quan top 50 của ngày gần nhất đã đủ dữ liệu: thứ hạng, CCU, giá, thể loại'
 );
 
 WITH latest AS (
@@ -14,6 +14,7 @@ WITH latest AS (
 )
 SELECT
   p.full_date,
+  c.ranking_order,
   p.game_id,
   g.game_title,
   ge.genres,
@@ -21,10 +22,9 @@ SELECT
   g.price_vnd,
   g.discount_pct,
   p.peak_ccu,
-  p.avg_ccu,
-  r.ranking_order
+  p.avg_ccu
 FROM dw.fact_daily_game_performance AS p
 JOIN latest ON latest.full_date = p.full_date
+JOIN staging.stg_game_catalog AS c ON c.game_id = p.game_id AND c.catalog_date = p.full_date
 JOIN dw.dim_game AS g ON g.game_id = p.game_id AND g.valid_to IS NULL
 LEFT JOIN genres AS ge ON ge.game_id = p.game_id
-LEFT JOIN dw.fact_game_ranking_daily AS r ON r.game_id = p.game_id AND r.full_date = p.full_date

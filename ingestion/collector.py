@@ -3,6 +3,7 @@ import json
 import time
 from datetime import datetime
 from io import BytesIO
+from urllib.parse import quote
 from dotenv import dotenv_values
 from minio import Minio
 
@@ -106,16 +107,47 @@ def collect_reviews(appid, client):
         return True
     return False
 
-def collect_batch(appids, collectors, client, min_success_rate=0.8, retry_wait=30):
+def collect_store_browse(appids, client, batch_size=50):
+    """Metadata Store cho nhiều game qua IStoreBrowseService (api.steampowered.com), 50 game/request.
+    File đặt tên theo appid đầu batch (storebrowse_<appid>_<ts>.json) để load_raw parse được.
+    Trả về danh sách appid thuộc các batch lỗi."""
+    failed = []
+    for i in range(0, len(appids), batch_size):
+        batch = appids[i:i + batch_size]
+        input_json = json.dumps({
+            "ids": [{"appid": a} for a in batch],
+            "context": {"language": "english", "country_code": "VN"},
+            "data_request": {"include_basic_info": True, "include_release": True,
+                             "include_supported_languages": True, "include_reviews": True},
+        })
+        data = fetch_steam_api(f"https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={quote(input_json)}")
+        if data and data.get("response", {}).get("store_items"):
+            save_json_to_minio(client, "storebrowse", batch[0], data)
+        else:
+            failed.extend(batch)
+        time.sleep(1)
+    return failed
+
+def collect_batch(appids, collectors, client, min_success_rate=0.8, retry_wait=30, pause=0):
     """Chạy từng collector cho mọi appid, thử lại các game lỗi 1 lượt.
+    pause: số giây nghỉ giữa 2 lần gọi (SteamSpy appdetails ~1 req/s, Store reviews ~200 req/5 phút).
     Raise lỗi (task Airflow chuyển failed) nếu tỷ lệ thành công thấp hơn min_success_rate."""
+    def run(collect_fn, ids):
+        failed = []
+        for appid in ids:
+            if not collect_fn(appid, client):
+                failed.append(appid)
+            if pause:
+                time.sleep(pause)
+        return failed
+
     low_success = []
     for collect_fn in collectors:
-        failed = [appid for appid in appids if not collect_fn(appid, client)]
+        failed = run(collect_fn, appids)
         if failed:
             print(f"[Collector] {collect_fn.__name__}: {len(failed)} failed, retrying in {retry_wait}s...")
             time.sleep(retry_wait)
-            failed = [appid for appid in failed if not collect_fn(appid, client)]
+            failed = run(collect_fn, failed)
 
         ok = len(appids) - len(failed)
         print(f"[Collector] {collect_fn.__name__}: {ok}/{len(appids)} OK, failed: {failed}")

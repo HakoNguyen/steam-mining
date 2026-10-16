@@ -7,6 +7,15 @@
     ccu_2weeks: INT
     source: VARCHAR(50)
     created_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."game_universe"'
+  columns:
+    snapshot_date: DATE
+    owners_rank: INT
+    game_id: INT
+    game_title: VARCHAR(255)
+    owners_range: VARCHAR(50)
+    source: VARCHAR(50)
+    created_at: TIMESTAMPTZ
 - name: '"steam_dwh"."raw"."steam_ccu_json"'
   columns:
     object_key: VARCHAR(255)
@@ -32,6 +41,14 @@
     payload: JSONB
     loaded_at: TIMESTAMPTZ
 - name: '"steam_dwh"."raw"."steam_store_json"'
+  columns:
+    object_key: VARCHAR(255)
+    appid: INT
+    partition_date: DATE
+    fetched_at: TIMESTAMPTZ
+    payload: JSONB
+    loaded_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."steam_storebrowse_json"'
   columns:
     object_key: VARCHAR(255)
     appid: INT

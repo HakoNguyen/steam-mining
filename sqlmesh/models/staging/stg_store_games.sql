@@ -50,7 +50,7 @@ SELECT
     1
   ) AS num_languages,
   EXISTS (SELECT 1 FROM JSONB_ARRAY_ELEMENTS(d -> 'categories') AS c(cat)
-          WHERE (c.cat ->> 'id')::INT IN (1, 36, 37, 47, 49)) AS is_multiplayer,
+          WHERE (c.cat ->> 'id')::INT IN (1, 24, 36, 37, 47, 49)) AS is_multiplayer,
   EXISTS (SELECT 1 FROM JSONB_ARRAY_ELEMENTS(d -> 'categories') AS c(cat)
           WHERE (c.cat ->> 'id')::INT IN (9, 38, 39, 48)) AS is_coop
 FROM fields

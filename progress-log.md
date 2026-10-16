@@ -99,10 +99,21 @@
 * Dọn: xóa `load_dimesions.py`, `load_facts.py`, `create_analytical_views.sql`, `migrate_dwh_schema.py`; drop bảng/view cũ trong `public` và 4 bảng rác không thuộc dự án.
 * Quy trình: sửa model ➔ `sqlmesh plan dev` ➔ kiểm tra ➔ `sqlmesh plan` (prod). Airflow chỉ `run`, không tự áp dụng thay đổi code.
 
+### 🔹 Bước 6 (16/10/2026): Tập ~2.000 game cho Data Mining (Game Universe)
+* Vấn đề: top 50 chỉ có ~63 game, toàn game cực lớn (owners ≥ 15 triệu, 53/67 game có tag Multiplayer trong top 10), danh sách SteamSpy top100 không đổi giữa 2 ngày ➔ không đủ cho Apriori/K-Means.
+* Đưa phần thu thập của HUYNH (`feat/02`: `bulk_collect.py`, IStoreBrowseService) vào pipeline chính:
+  - `ingestion/universe.py` ➔ `raw.game_universe`: 2.000 game top owners từ SteamSpy `request=all` (2 trang), chụp mỗi tuần, lỗi thì giữ lần trước.
+  - `collector.collect_store_browse`: 50 game/request qua `api.steampowered.com` (giá VND, ngày phát hành, ngôn ngữ, category). `collect_batch` thêm `pause` cho API giới hạn tốc độ.
+  - DAG `steam_weekly_universe_ingestion` (01:00 UTC thứ Hai): universe ➔ store browse ➔ SteamSpy (1 req/s) ➔ CCU ➔ Reviews (1,5 s/req), chạy lần lượt, ~2 giờ.
+* SQLMesh: thêm `stg_storebrowse_games`, `stg_game_universe`, `stg_game_metadata` (gộp appdetails + store browse); `dim_game` lấy bản mới nhất giữa 2 nguồn, SCD2 chỉ theo dõi tên/giá/giảm giá; thể loại lấy từ SteamSpy `genre` (Store browse không có).
+* Marts: dashboard (`mart_ccu_hourly_trend`, `mart_executive_overview`) chỉ lấy top 50 của từng ngày; `mart_mining_features` thêm `app_type`, `owners_min/max`, `release_month`, `publisher_prior_games`, `snapshot_count`, `is_in_universe`.
+* Lưu ý: `create_external_models` gắn `gateway: local` và ghi thêm bản trùng ➔ sau mỗi lần chạy phải bỏ dòng gateway và bản cũ.
+
 ---
 
 ## 🎯 BƯỚC TIẾP THEO (NEXT ACTION)
 1. Giai đoạn 4: Metabase kết nối schema `marts`, dựng question/dashboard; Streamlit Smart Dashboard lấy dữ liệu qua Metabase API.
-2. Để máy (kèm WARP) chạy liên tục vài ngày trước buổi báo cáo để có đủ CCU theo giờ.
-3. Theo dõi SteamSpy `top100in2weeks`: số CCU ngày 15/10 và 16/10 giống hệt nhau, có thể SteamSpy chưa cập nhật.
-4. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.
+2. HUYNH: lấy dữ liệu từ `marts.mart_mining_features`, `dw.bridge_game_tag` (`vote_rank`), `dw.bridge_game_genre`, `dw.fact_game_reviews`.
+3. Để máy (kèm WARP) chạy liên tục vài ngày trước buổi báo cáo để có đủ CCU theo giờ.
+4. Theo dõi SteamSpy `top100in2weeks`: số CCU ngày 15/10 và 16/10 giống hệt nhau, có thể SteamSpy chưa cập nhật.
+5. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.
