@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from ingestion.collector import (collect_steamspy, collect_store_details, get_minio_client, get_target_appids)
+from ingestion.collector import (collect_batch, collect_steamspy, collect_store_details, get_minio_client, get_target_appids)
 
 default_args = {
     'owner': 'airflow',
@@ -23,9 +23,7 @@ def run_weekly_metadata_collection():
     client = get_minio_client()
 
     print(f"[Airflow Weekly DAG] Collecting Metadata & SteamSpy for"f" {len(target_appids)} games...")
-    for appid in target_appids:
-        collect_store_details(appid, client)
-        collect_steamspy(appid, client)
+    collect_batch(target_appids, [collect_store_details, collect_steamspy], client)
 
 with DAG(
     'steam_weekly_metadata_ingestion',
