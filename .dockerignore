@@ -1,0 +1,17 @@
+# Image chỉ cần Dockerfile; code được mount vào lúc chạy, nên loại mọi thứ khỏi build context
+.venv/
+.git/
+logs/
+sqlmesh/
+dags/
+ingestion/
+transformation/
+scripts/
+discuss/
+docs/
+dashboard/
+mining/
+*.json
+*.duckdb
+*.db
+.env

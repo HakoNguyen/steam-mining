@@ -1,0 +1,41 @@
+- name: '"steam_dwh"."raw"."game_catalog_daily"'
+  columns:
+    catalog_date: DATE
+    ranking_order: INT
+    game_id: INT
+    game_title: VARCHAR(255)
+    ccu_2weeks: INT
+    source: VARCHAR(50)
+    created_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."steam_ccu_json"'
+  columns:
+    object_key: VARCHAR(255)
+    appid: INT
+    partition_date: DATE
+    fetched_at: TIMESTAMPTZ
+    payload: JSONB
+    loaded_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."steam_reviews_json"'
+  columns:
+    object_key: VARCHAR(255)
+    appid: INT
+    partition_date: DATE
+    fetched_at: TIMESTAMPTZ
+    payload: JSONB
+    loaded_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."steam_steamspy_json"'
+  columns:
+    object_key: VARCHAR(255)
+    appid: INT
+    partition_date: DATE
+    fetched_at: TIMESTAMPTZ
+    payload: JSONB
+    loaded_at: TIMESTAMPTZ
+- name: '"steam_dwh"."raw"."steam_store_json"'
+  columns:
+    object_key: VARCHAR(255)
+    appid: INT
+    partition_date: DATE
+    fetched_at: TIMESTAMPTZ
+    payload: JSONB
+    loaded_at: TIMESTAMPTZ

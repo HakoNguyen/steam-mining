@@ -18,9 +18,12 @@ def diagnose():
     conn = get_db_connection()
     cur = conn.cursor()
     tables = [
-        "dim_game", "dim_genre", "bridge_game_genre",
-        "dim_tag", "bridge_game_tag", "dim_date", "dim_time",
-        "fact_player_snapshot", "fact_daily_game_performance"
+        "raw.steam_store_json", "raw.steam_steamspy_json", "raw.steam_ccu_json",
+        "raw.steam_reviews_json", "raw.game_catalog_daily",
+        "dw.dim_game", "dw.dim_genre", "dw.dim_tag",
+        "dw.bridge_game_genre", "dw.bridge_game_tag",
+        "dw.fact_player_snapshot", "dw.fact_daily_game_performance",
+        "dw.fact_game_daily_stats", "dw.fact_game_ranking_daily", "dw.fact_game_reviews",
     ]
     for t in tables:
         cur.execute(f"SELECT COUNT(*) FROM {t};")

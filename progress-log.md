@@ -41,10 +41,9 @@
     ├── [x] DAGs: Hourly CCU, Daily Metadata (Store + SteamSpy), Daily Reviews
     └── [x] (15/10) Dynamic Daily Catalog Top 50: raw.game_catalog_daily + DAG steam_daily_catalog_sync
 
-[/] Phase 4: Transformation & ELT Pipeline (Raw ➔ DWH) — đang chuẩn hóa sang SQLMesh
-    ├── [x] Bản tạm bằng Python: transformation/load_dimesions.py, load_facts.py (MinIO ➔ Star Schema)
+[x] Phase 4: Transformation & ELT Pipeline (Raw ➔ DWH)
     ├── [x] (15/10) Nạp JSONB từ MinIO vào schema raw (incremental theo partition ngày + watermark, gồm reviews)
-    └── [ ] Chuyển transformation sang SQLMesh (staging ➔ core ➔ marts + audits)
+    └── [x] (16/10) SQLMesh: 7 staging + 12 dw (dim_game SCD2, fact incremental) + 4 marts, audits; chạy trong Airflow
 
 [ ] Phase 5: Khai phá dữ liệu (Data Mining)
     ├── Apriori / FP-Growth (Luật kết hợp Tag game)
@@ -85,8 +84,25 @@
 * Kết quả lần đầu: store 109, steamspy 107, ccu 1207, reviews 231 file — khớp 100% với MinIO; lần chạy lại nạp 0 file.
 * Ghi nhận: Reviews API trả cùng ~50 review "hữu ích nhất" mỗi ngày ➔ hiện chỉ có 2.664 review khác nhau / 51 game.
 
+### 🔹 Bước 4 (16/10/2026): Collector báo lỗi đúng khi mạng tới Steam bị chặn
+* Sự cố: nhà mạng chặn kết nối tới `*.steampowered.com` (reset ở bước TLS, SteamSpy vẫn vào được) ➔ mất ~1/3 dữ liệu mà Airflow vẫn báo xanh. Xử lý mạng: bật Cloudflare WARP.
+* `collector.py`: `collect_*` trả True/False; `collect_batch` thử lại riêng game lỗi sau 30s, in tổng kết `X/50 OK`, raise nếu < 80% ➔ task FAILED và Airflow tự retry. Retry backoff 2s/4s cho cả lỗi mạng và HTTP != 200.
+* Store API thêm `cc=vn` ➔ giá luôn là VND.
+
+### 🔹 Bước 5 (16/10/2026): Chuyển transformation sang SQLMesh (Giai đoạn 3)
+* SQLMesh 0.236.3: cài ở `.venv` (dev trên Windows) và venv riêng `/opt/sqlmesh-venv` trong image Airflow (`Dockerfile`), không cài chung với Airflow vì xung đột `duckdb`. Tích hợp Airflow sẵn có của SQLMesh đã bị gỡ ➔ dùng `BashOperator` gọi `sqlmesh --gateway docker run`.
+* `sqlmesh/config.yaml`: 2 gateway trỏ cùng database (`local` = localhost:5433, `docker` = postgres-dwh:5432); mật khẩu đọc từ `sqlmesh/.env` (không commit); `start: 2026-10-15` (dữ liệu trước đó coi là chạy thử).
+* Schema: `staging` (VIEW làm sạch JSON), `dw` (star schema), `marts` (phục vụ Metabase/Mining). Không dùng `public` vì SQLMesh không ghi đè được bảng tạo tay.
+* Kiểu lưu: `dim_game` **SCD Type 2 by column** (giá/tên/nhà phát hành đổi ➔ phiên bản mới); dim/bridge nhỏ FULL; fact INCREMENTAL_BY_TIME_RANGE (CCU theo giờ, còn lại theo ngày); `fact_game_reviews` INCREMENTAL_BY_UNIQUE_KEY (MERGE theo review_id).
+* Khó khăn đã gặp: sqlglot đổi `payload -> <biểu thức>` thành `JSON_EXTRACT_PATH` (không nhận jsonb) ➔ dùng `JSONB_EXTRACT_PATH`; gõ sai tên biến môi trường làm Jinja chèn chữ `None` vào mật khẩu; `create_external_models` gắn `gateway: local` làm gateway docker không thấy bảng raw.
+* DAG transform: `task_load_raw >> task_sqlmesh_run`, `max_active_runs=1`.
+* Dọn: xóa `load_dimesions.py`, `load_facts.py`, `create_analytical_views.sql`, `migrate_dwh_schema.py`; drop bảng/view cũ trong `public` và 4 bảng rác không thuộc dự án.
+* Quy trình: sửa model ➔ `sqlmesh plan dev` ➔ kiểm tra ➔ `sqlmesh plan` (prod). Airflow chỉ `run`, không tự áp dụng thay đổi code.
+
 ---
 
 ## 🎯 BƯỚC TIẾP THEO (NEXT ACTION)
-1. Giai đoạn 3: cài SQLMesh vào image Airflow, viết models staging ➔ core ➔ marts đọc từ `raw.*` (thay loader Python).
-2. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.
+1. Giai đoạn 4: Metabase kết nối schema `marts`, dựng question/dashboard; Streamlit Smart Dashboard lấy dữ liệu qua Metabase API.
+2. Để máy (kèm WARP) chạy liên tục vài ngày trước buổi báo cáo để có đủ CCU theo giờ.
+3. Theo dõi SteamSpy `top100in2weeks`: số CCU ngày 15/10 và 16/10 giống hệt nhau, có thể SteamSpy chưa cập nhật.
+4. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.
