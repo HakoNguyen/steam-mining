@@ -15,52 +15,6 @@ Hệ thống Kho dữ liệu (Data Warehouse) và Khai phá dữ liệu (Data Mi
 
 ![Steam DWH Data Flow Architecture](./docs/architecture.png)
 
-### 🔄 Interactive Flow Diagram (Mermaid)
-
-```mermaid
-flowchart LR
-    subgraph SOURCES ["🌐 1. Data Sources"]
-        direction TB
-        S1["<img src='https://cdn.simpleicons.org/steam/171A21' width='20'/> <b>Steam Web API</b><br/><i>(CCU Hourly)</i>"]
-        S2["<img src='https://cdn.simpleicons.org/steam/171A21' width='20'/> <b>Steam Store API</b><br/><i>(Metadata Weekly)</i>"]
-        S3["<img src='https://cdn.simpleicons.org/steam/171A21' width='20'/> <b>SteamSpy API</b><br/><i>(Tags & Owners)</i>"]
-        S4["<img src='https://cdn.simpleicons.org/steam/171A21' width='20'/> <b>Steam Reviews API</b><br/><i>(Daily Reviews)</i>"]
-    end
-
-    subgraph LAKE ["🪣 2. Data Lake"]
-        MINIO["<img src='https://cdn.simpleicons.org/minio/C72C48' width='22'/> <b>MinIO S3</b><br/><code>raw-steam-data</code>"]
-    end
-
-    subgraph ORCHESTRATION ["⚙️ 3. Orchestrator"]
-        AIRFLOW["<img src='https://cdn.simpleicons.org/apacheairflow/017CEE' width='22'/> <b>Apache Airflow</b><br/><i>DAGs Scheduler</i>"]
-    end
-
-    subgraph DWH ["🗄️ 4. Data Warehouse"]
-        STAGING["<b>raw Schema</b><br/><i>JSONB Staging</i>"]
-        STARSCHEMA["<img src='https://cdn.simpleicons.org/postgresql/4169E1' width='22'/> <b>PostgreSQL 16</b><br/><i>Star Schema DWH</i>"]
-    end
-
-    subgraph MINING ["🤖 5. Data Mining"]
-        direction TB
-        APRIORI["<img src='https://cdn.simpleicons.org/python/3776AB' width='18'/> <b>Apriori / FP-Growth</b><br/><i>Tag Association Rules</i>"]
-        KMEANS["<img src='https://cdn.simpleicons.org/scikitlearn/F7931E' width='18'/> <b>K-Means Clustering</b><br/><i>Market Segmentation</i>"]
-        CART["<img src='https://cdn.simpleicons.org/scikitlearn/F7931E' width='18'/> <b>Decision Tree CART</b><br/><i>Hit Game Predictor</i>"]
-    end
-
-    subgraph BI ["📊 6. Serving & BI Layer"]
-        direction TB
-        METABASE["<img src='https://cdn.simpleicons.org/metabase/509EE3' width='20'/> <b>Metabase BI</b><br/><i>Drag & Drop Dashboard</i>"]
-        STREAMLIT["<img src='https://cdn.simpleicons.org/streamlit/FF4B4B' width='20'/> <b>Streamlit Copilot</b><br/><i>Text-to-SQL AI Assistant</i>"]
-    end
-
-    SOURCES -->|Raw JSON| MINIO
-    AIRFLOW -.->|Schedule & Audit| SOURCES & MINIO & DWH
-    MINIO -->|Load JSONB| STAGING
-    STAGING -->|SQL Transformation| STARSCHEMA
-    STARSCHEMA -->|Data Mart Views| MINING
-    STARSCHEMA --> METABASE & STREAMLIT
-    MINING --> STREAMLIT
-```
 
 ---
 
@@ -68,13 +22,35 @@ flowchart LR
 
 | Tầng chức năng | Công nghệ | Biểu tượng | Mô tả & Cổng kết nối |
 |---|---|---|---|
-| **Raw Data Lake** | **MinIO S3** | <img src="https://cdn.simpleicons.org/minio/C72C48" width="24"/> | Lưu trữ dữ liệu thô JSONB (`9000` / `9001`) |
-| **Data Warehouse** | **PostgreSQL 16** | <img src="https://cdn.simpleicons.org/postgresql/4169E1" width="24"/> | Kho dữ liệu hình sao Star Schema (`5432`) |
-| **Orchestrator** | **Apache Airflow** | <img src="https://cdn.simpleicons.org/apacheairflow/017CEE" width="24"/> | Lập lịch & giám sát Data Pipeline (`8080`) |
-| **Transform Engine** | **SQL / SQLMesh** | <img src="https://cdn.simpleicons.org/postgresql/4169E1" width="24"/> | Biến đổi dữ liệu thô ➔ Dimensions & Facts |
-| **Data Mining** | **Python ML** | <img src="https://cdn.simpleicons.org/python/3776AB" width="24"/> | Apriori, K-Means, CART Tree, BERTopic |
-| **BI Dashboard** | **Metabase** | <img src="https://cdn.simpleicons.org/metabase/509EE3" width="24"/> | Trực quan hóa & Phân tích OLAP (`3000`) |
-| **AI Copilot** | **Streamlit** | <img src="https://cdn.simpleicons.org/streamlit/FF4B4B" width="24"/> | Trợ lý truy vấn SQL tự nhiên (`8501`) |
+| **Raw Data Lake** | **MinIO S3** | <img src="https://cdn.simpleicons.org/minio/C72C48" width="24"/> | Lưu file JSON gốc từ API, chia thư mục theo ngày (`9000` / `9001`) |
+| **Data Warehouse** | **PostgreSQL 16** | <img src="https://cdn.simpleicons.org/postgresql/4169E1" width="24"/> | Schema `raw` → `staging` → `dw` (Star Schema) → `marts` (`5433`) |
+| **Orchestrator** | **Apache Airflow** | <img src="https://cdn.simpleicons.org/apacheairflow/017CEE" width="24"/> | Lập lịch thu thập dữ liệu & chạy biến đổi (`8080`) |
+| **Transform Engine** | **SQLMesh** | <img src="https://cdn.simpleicons.org/postgresql/4169E1" width="24"/> | Model SQL: làm sạch JSON, Star Schema (SCD Type 2, incremental), data mart, audit |
+| **Data Mining** | **Python ML** | <img src="https://cdn.simpleicons.org/python/3776AB" width="24"/> | FP-Growth (luật kết hợp tag), K-Means, CART, phân loại review (TF-IDF + LR), chủ đề review (NMF) |
+| **BI Dashboard** | **Metabase** | <img src="https://cdn.simpleicons.org/metabase/509EE3" width="24"/> | Dựng question & dashboard trên schema `marts` (`3000`) |
+| **Smart Dashboard & AI Copilot** | **Streamlit** | <img src="https://cdn.simpleicons.org/streamlit/FF4B4B" width="24"/> | Dashboard lấy dữ liệu qua Metabase API; Copilot phân tích biểu đồ, bản tin, trợ lý khảo sát thị trường (`8501`, đang phát triển) |
+
+---
+
+## 🔄 Pipeline (Airflow DAGs)
+
+| DAG | Lịch (UTC) | Việc |
+|---|---|---|
+| `steam_daily_catalog_sync` | 00:00 hằng ngày | Chọn top 50 game (SteamSpy) → `raw.game_catalog_daily` |
+| `steam_hourly_ccu_ingestion` | mỗi giờ | CCU của top 50 → MinIO |
+| `steam_weekly_metadata_ingestion` | hằng ngày | Store appdetails + SteamSpy của top 50 → MinIO |
+| `steam_daily_reviews_ingestion` | hằng ngày | Review của top 50 → MinIO |
+| `steam_weekly_universe_ingestion` | 01:00 thứ Hai | ~2.000 game nhiều owners nhất (phục vụ Data Mining): Store browse, SteamSpy, CCU, review → MinIO |
+| `transformation_staging_to_warehouse` | phút 15 mỗi giờ | Nạp file mới vào `raw` (incremental theo watermark) → `sqlmesh run` |
+
+## 🗄️ Các tầng dữ liệu (PostgreSQL `steam_dwh`)
+
+| Schema | Nội dung | Ai tạo |
+|---|---|---|
+| `raw` | JSON gốc (1 file = 1 dòng), danh sách game cần thu thập, watermark | Python (`ingestion/`, `transformation/load_raw.py`) |
+| `staging` | View tách JSON thành cột, làm sạch | SQLMesh (`sqlmesh/models/staging/`) |
+| `dw` | Star Schema: `dim_game` (SCD Type 2), `dim_tag`, `dim_genre`, `dim_date`, `dim_time`, bridge, 5 bảng fact | SQLMesh (`sqlmesh/models/dw/`) |
+| `marts` | Bảng phục vụ dashboard và Data Mining (`mart_mining_features`…) | SQLMesh (`sqlmesh/models/marts/`) |
 
 ---
 
@@ -84,12 +60,14 @@ flowchart LR
 .
 ├── docs/               # Hình ảnh kiến trúc & sơ đồ hệ thống
 ├── discuss/            # Tài liệu thiết kế & quy hoạch kiến trúc
-├── scripts/            # Script khởi tạo Database SQL
-├── ingestion/          # Thư mục chứa module gọi API Steam (curl_cffi)
+├── scripts/            # Script khởi tạo database & bảng raw
+├── ingestion/          # Gọi API Steam/SteamSpy (curl_cffi), chọn game cần thu thập
+├── transformation/     # Nạp file từ MinIO vào schema raw
 ├── dags/               # Apache Airflow DAGs
-├── sqlmesh/            # Tầng SQL Transformation
-├── mining/             # Các thuật toán Data Mining (Apriori, K-Means, CART)
-├── dashboard/          # Source code ứng dụng Streamlit AI Copilot
+├── sqlmesh/            # Project SQLMesh: staging, dw, marts
+├── mining/             # Các thuật toán Data Mining
+├── dashboard/          # Streamlit: Smart Dashboard & AI Copilot (đang phát triển)
+├── Dockerfile          # Image Airflow kèm venv riêng cho SQLMesh
 ├── docker-compose.yml  # File khởi chạy toàn bộ hệ thống
 ├── .gitignore          # Cấu hình bỏ qua file nhạy cảm & data rác
 └── README.md           # Tài liệu hướng dẫn dự án
@@ -103,18 +81,32 @@ flowchart LR
 * [Docker Desktop](https://www.docker.com/products/docker-desktop/) & Docker Compose
 * Git
 
-### Khởi chạy 1 lệnh duy nhất
+### Các bước khởi chạy
 ```bash
-# Clone repository
+# 1. Clone repository
 git clone https://github.com/HakoNguyen/steam-mining.git
 cd steam-mining
 
-# Khởi chạy toàn bộ 5 dịch vụ
-docker-compose up -d --build
+# 2. Cấu hình: copy .env.example thành .env rồi điền giá trị;
+#    tạo sqlmesh/.env gồm POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+
+# 3. Khởi chạy 4 dịch vụ (Postgres, MinIO, Airflow, Metabase); image Airflow được build kèm SQLMesh
+docker compose up -d --build
+
+# 4. Tạo các bảng raw
+docker exec -i steam_postgres_dwh psql -U admin -d steam_dwh < scripts/create_dwh_schema.sql
+
+# 5. Triển khai SQLMesh lần đầu (tạo schema staging, dw, marts)
+docker exec -w /opt/airflow/sqlmesh steam_apache_airflow /opt/sqlmesh-venv/bin/sqlmesh --gateway docker plan --auto-apply
 ```
 
-### Các cổng truy cập Dashboard:
-* 🪣 **MinIO Console:** `http://localhost:9001` (`admin` / `miniopassword123`)
+6. Mở Airflow và bật các DAG cần dùng. Khi vừa được bật, DAG tự chạy lượt gần nhất.
+
+> Một số nhà mạng tại Việt Nam chặn `*.steampowered.com`. Nếu DAG thu thập báo lỗi hàng loạt, bật VPN hoặc Cloudflare WARP.
+
+### Các cổng truy cập
+* 🗄️ **PostgreSQL:** `localhost:5433`, database `steam_dwh`
+* 🪣 **MinIO Console:** `http://localhost:9001` (`admin` / `adminpassword123`)
 * ⚙️ **Apache Airflow:** `http://localhost:8080` (`admin` / `admin`)
 * 📊 **Metabase BI:** `http://localhost:3000`
-* 🤖 **Streamlit Copilot:** `http://localhost:8501`
+* 🤖 **Streamlit (Smart Dashboard & Copilot):** `http://localhost:8501` (đang phát triển)
