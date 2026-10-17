@@ -9,8 +9,11 @@ SQLAlchemy>=2.0.0
 minio>=7.2.0
 
 # Data Processing & Analytics
-pandas>=2.2.0
+pandas>=2.2.0,<3.0.0  # sqlmesh yêu cầu pandas < 3
 numpy>=1.26.0
+
+# Transformation (ghim cùng phiên bản với venv SQLMesh trong Dockerfile)
+sqlmesh==0.236.3
 
 # Utilities
 python-dotenv>=1.0.1

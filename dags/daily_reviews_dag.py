@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from ingestion.collector import (collect_reviews, get_minio_client, get_target_appids)
+from ingestion.collector import (collect_batch, collect_reviews, get_minio_client, get_target_appids)
 
 default_args = {
     'owner': 'airflow',
@@ -19,12 +19,11 @@ default_args = {
 }
 
 def run_daily_reviews_collection():
-    target_appids = get_target_appids(limit=50)
+    target_appids = get_target_appids()
     client = get_minio_client()
     print(f'Found {len(target_appids)} target appids')
 
-    for appid in target_appids: 
-        collect_reviews(appid, client)
+    collect_batch(target_appids, [collect_reviews], client)
     
 with DAG(
     'steam_daily_reviews_ingestion',

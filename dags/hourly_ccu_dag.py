@@ -8,7 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
-from ingestion.collector import collect_ccu, get_minio_client, get_target_appids
+from ingestion.collector import collect_batch, collect_ccu, get_minio_client, get_target_appids
 
 default_args = {
     'owner': 'airflow',
@@ -19,12 +19,11 @@ default_args = {
 }
 
 def run_hourly_ccu_collection():
-    target_appids = get_target_appids(limit=20)
+    target_appids = get_target_appids()
     client = get_minio_client()
 
     print(f"Airflow CCU: Starting for {len(target_appids)} games")
-    for appid in target_appids:
-        collect_ccu(appid, client)
+    collect_batch(target_appids, [collect_ccu], client)
 
 with DAG(
     'steam_hourly_ccu_ingestion',

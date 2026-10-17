@@ -1,0 +1,24 @@
+gateways:
+  local:
+    connection:
+      type: postgres
+      host: localhost
+      port: 5433
+      user: {{ env_var('POSTGRES_USER', 'admin') }}
+      password: {{ env_var('POSTGRES_PASSWORD') }}
+      database: {{ env_var('POSTGRES_DB', 'steam_dwh') }}
+  docker: 
+    connection:
+      type: postgres
+      host: postgres-dwh
+      port: 5432
+      user: {{ env_var('POSTGRES_USER', 'admin') }}
+      password: {{ env_var('POSTGRES_PASSWORD') }}
+      database: {{ env_var('POSTGRES_DB', 'steam_dwh') }}
+
+default_gateway: local
+
+model_defaults:
+  dialect: postgres
+  start: '2026-10-15'
+

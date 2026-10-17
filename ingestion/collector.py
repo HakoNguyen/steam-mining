@@ -3,6 +3,7 @@ import json
 import time
 from datetime import datetime
 from io import BytesIO
+from urllib.parse import quote
 from dotenv import dotenv_values
 from minio import Minio
 
@@ -51,14 +52,10 @@ def save_json_to_minio(client, source_name, appid, payload):
     print(f"[MinIO S3 OK] Saved: s3://{MINIO_BUCKET_NAME}/{object_name}")
     return object_name
 
-def get_target_appids(limit=50):
-    url = "https://steamspy.com/api.php?request=top100in2weeks"
-    data = fetch_steam_api(url)
-    if data and isinstance(data, dict):
-        appids = [int(k) for k in data.keys() if k.isdigit()]
-        if appids:
-            return appids[:limit]
-    return [1091500, 730, 570, 1086940, 271590]
+def get_target_appids():
+    # Mọi DAG đọc chung Daily Catalog (raw.game_catalog_daily) thay vì tự gọi SteamSpy
+    from ingestion.catalog import get_catalog_appids
+    return get_catalog_appids()
 
 # 4. Fetch Steam API with curl_cffi
 def fetch_steam_api(url, impersonate='chrome124', retries=3):
@@ -67,35 +64,101 @@ def fetch_steam_api(url, impersonate='chrome124', retries=3):
             response = requests.get(url, impersonate=impersonate, timeout=15)
             if response.status_code == 200:
                 return response.json()
+            print(f"  [Retry {attempt+1}/{retries}] HTTP {response.status_code} from {url}")
         except Exception as e:
             print(f"  [Retry {attempt+1}/{retries}] Error fetching {url}: {e}")
-            time.sleep(2)
+        # Chờ tăng dần 2s, 4s (không chờ sau lần cuối), áp dụng cho cả lỗi mạng lẫn HTTP != 200
+        if attempt < retries - 1:
+            time.sleep(2 ** (attempt + 1))
+    print(f"  [Gave up] {url}")
     return None
 
-# 5. Collectors for 4 APIs
+# 5. Collectors for 4 APIs (trả về True nếu đã lưu được file lên MinIO)
 def collect_ccu(appid, client):
     url = f"https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/?appid={appid}"
     data = fetch_steam_api(url)
     if data:
         save_json_to_minio(client, "ccu", appid, data)
+        return True
+    return False
 
 def collect_store_details(appid, client):
-    url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english"
+    # cc=vn: giá luôn trả về VND, không phụ thuộc vùng của máy gọi
+    url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english&cc=vn"
     data = fetch_steam_api(url)
     if data:
         save_json_to_minio(client, "store", appid, data)
+        return True
+    return False
 
 def collect_steamspy(appid, client):
     url = f"https://steamspy.com/api.php?request=appdetails&appid={appid}"
     data = fetch_steam_api(url)
     if data:
         save_json_to_minio(client, "steamspy", appid, data)
+        return True
+    return False
 
 def collect_reviews(appid, client):
     url = f"https://store.steampowered.com/appreviews/{appid}?json=1&language=english&cursor=*&num_per_page=50"
     data = fetch_steam_api(url)
     if data:
         save_json_to_minio(client, "reviews", appid, data)
+        return True
+    return False
+
+def collect_store_browse(appids, client, batch_size=50):
+    """Metadata Store cho nhiều game qua IStoreBrowseService (api.steampowered.com), 50 game/request.
+    File đặt tên theo appid đầu batch (storebrowse_<appid>_<ts>.json) để load_raw parse được.
+    Trả về danh sách appid thuộc các batch lỗi."""
+    failed = []
+    for i in range(0, len(appids), batch_size):
+        batch = appids[i:i + batch_size]
+        input_json = json.dumps({
+            "ids": [{"appid": a} for a in batch],
+            "context": {"language": "english", "country_code": "VN"},
+            "data_request": {"include_basic_info": True, "include_release": True,
+                             "include_supported_languages": True, "include_reviews": True},
+        })
+        data = fetch_steam_api(f"https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={quote(input_json)}")
+        if data and data.get("response", {}).get("store_items"):
+            save_json_to_minio(client, "storebrowse", batch[0], data)
+        else:
+            failed.extend(batch)
+        time.sleep(1)
+    return failed
+
+def collect_batch(appids, collectors, client, min_success_rate=0.8, retry_wait=30, pause=0):
+    """Chạy từng collector cho mọi appid, thử lại các game lỗi 1 lượt.
+    pause: số giây nghỉ giữa 2 lần gọi (SteamSpy appdetails ~1 req/s, Store reviews ~200 req/5 phút).
+    Raise lỗi (task Airflow chuyển failed) nếu tỷ lệ thành công thấp hơn min_success_rate."""
+    def run(collect_fn, ids):
+        failed = []
+        for appid in ids:
+            if not collect_fn(appid, client):
+                failed.append(appid)
+            if pause:
+                time.sleep(pause)
+        return failed
+
+    low_success = []
+    for collect_fn in collectors:
+        failed = run(collect_fn, appids)
+        if failed:
+            print(f"[Collector] {collect_fn.__name__}: {len(failed)} failed, retrying in {retry_wait}s...")
+            time.sleep(retry_wait)
+            failed = run(collect_fn, failed)
+
+        ok = len(appids) - len(failed)
+        print(f"[Collector] {collect_fn.__name__}: {ok}/{len(appids)} OK, failed: {failed}")
+        if appids and ok / len(appids) < min_success_rate:
+            low_success.append(f"{collect_fn.__name__} {ok}/{len(appids)}")
+
+    if low_success:
+        raise RuntimeError(
+            f"[Collector] Success rate below {min_success_rate:.0%}: {', '.join(low_success)}. "
+            "Check network access to Steam."
+        )
 
 # 6. Main Pipeline Collector Runner
 def run_collector(appids=[1091500, 730, 570]):
