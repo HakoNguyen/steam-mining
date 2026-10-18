@@ -1,0 +1,6 @@
+streamlit==1.66.0
+plotly==7.1.0
+pandas>=2.2,<3
+requests>=2.31
+python-dotenv>=1.0.1
+pyjwt>=2.8

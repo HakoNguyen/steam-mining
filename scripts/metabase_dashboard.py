@@ -7,15 +7,18 @@ Cần METABASE_API_KEY trong .env (Admin settings > Authentication > API keys).
 """
 import json
 import os
+import secrets
 from pathlib import Path
 
 import requests
 from dotenv import dotenv_values
 
-ENV = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+ENV = dotenv_values(ENV_FILE)
 BASE = os.environ.get("METABASE_URL", "http://localhost:3000") + "/api"
 DB_NAME = "Steam Market DWH"
 COLLECTION = "Steam DWH"
+STREAMLIT_COLLECTION = "Streamlit"   # sub-collection: question riêng cho Streamlit, cột snake_case cố định
 DASHBOARD = "Steam Market — Smart Dashboard"
 
 # Bảng màu đã kiểm định (skill dataviz, reference palette, nền sáng):
@@ -244,6 +247,120 @@ LIMIT 15
     ]
 
 
+# ---------------------------------------------------------------- question cho Streamlit
+# Streamlit lấy số liệu qua Metabase API rồi tự vẽ bằng Plotly. Tên cột là "hợp đồng" với code
+# dashboard/: đổi tên cột ở đây thì phải sửa dashboard/views/smart_dashboard.py theo.
+
+def streamlit_questions():
+    return [
+        ("[Streamlit] KPI CCU theo ngày", """
+SELECT p.full_date AS full_date, SUM(p.peak_ccu) AS total_peak_ccu
+FROM dw.fact_daily_game_performance AS p
+JOIN dw.fact_game_ranking_daily AS r ON r.game_id = p.game_id AND r.full_date = p.full_date
+GROUP BY p.full_date
+ORDER BY p.full_date
+"""),
+        ("[Streamlit] KPI thị trường", f"""
+SELECT
+  COUNT(*) AS n_games,
+  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_vnd) FILTER (WHERE NOT is_free AND price_vnd > 0) AS median_price_vnd,
+  AVG(CASE WHEN is_free THEN 1.0 ELSE 0 END) AS pct_free,
+  (SELECT COUNT(*) FILTER (WHERE is_deep_discount) FROM marts.mart_daily_movers WHERE status <> 'dropped_out') AS n_deep_discount
+{UNIVERSE}
+"""),
+        ("[Streamlit] Top 50 hôm nay", """
+SELECT full_date, ranking_order, game_id, game_title, genres, is_free, price_vnd, discount_pct, peak_ccu, avg_ccu
+FROM marts.mart_executive_overview
+ORDER BY peak_ccu DESC
+"""),
+        ("[Streamlit] Biến động top 50", """
+SELECT report_date, game_id, game_title, status, rank_today, rank_yesterday, peak_ccu_today, peak_ccu_yesterday,
+       peak_ccu_change_pct, snapshots_today, snapshots_yesterday, discount_pct
+FROM marts.mart_daily_movers
+"""),
+        ("[Streamlit] CCU theo giờ (top 50, 7 ngày)", """
+SELECT game_id, game_title, snapshot_at_vn, concurrent_players
+FROM marts.mart_ccu_hourly_trend
+WHERE snapshot_at >= NOW() - INTERVAL '7 days'
+ORDER BY snapshot_at_vn
+"""),
+        ("[Streamlit] CCU theo giờ và thứ", """
+SELECT EXTRACT(ISODOW FROM snapshot_at_vn)::INT AS dow, hour_vn,
+       AVG(concurrent_players) AS avg_ccu, COUNT(DISTINCT snapshot_at_vn::DATE) AS n_days
+FROM marts.mart_ccu_hourly_trend
+GROUP BY 1, 2
+"""),
+        ("[Streamlit] Thị trường theo tag", """
+SELECT tag_name, n_games, pct_high_positive, avg_owners, avg_positive_ratio, median_price_vnd
+FROM marts.mart_market_by_tag
+WHERE n_games >= 20
+"""),
+        ("[Streamlit] Thị trường theo thể loại", """
+SELECT genre_name, n_games, avg_owners, avg_positive_ratio, pct_high_positive, median_price_vnd, pct_free
+FROM marts.mart_market_by_genre
+WHERE n_games >= 10
+"""),
+        ("[Streamlit] Giá và tỷ lệ khen", f"""
+SELECT game_title, price_vnd, (positive_ratio * 100)::NUMERIC(5, 1) AS positive_pct, owners_mid
+{UNIVERSE} AND NOT is_free AND price_vnd > 0 AND positive_ratio IS NOT NULL
+"""),
+        ("[Streamlit] Giá theo thể loại", """
+WITH top_genres AS (
+  SELECT genre_name FROM marts.mart_market_by_genre
+  WHERE genre_name <> 'Free To Play'
+  ORDER BY n_games DESC LIMIT 8
+)
+SELECT g.genre_name, f.price_vnd
+FROM marts.mart_mining_features AS f
+JOIN dw.bridge_game_genre AS b ON b.game_id = f.game_id
+JOIN dw.dim_genre AS g ON g.genre_key = b.genre_key
+JOIN top_genres AS t ON t.genre_name = g.genre_name
+WHERE f.is_in_universe AND f.app_type = 'game' AND NOT f.is_free AND f.price_vnd > 0
+"""),
+        ("[Streamlit] Game giảm giá sâu", """
+SELECT d.game_title, d.price_initial_vnd, d.price_vnd, d.discount_pct, f.owners_mid
+FROM dw.dim_game AS d
+JOIN marts.mart_mining_features AS f USING (game_id)
+WHERE d.valid_to IS NULL AND d.discount_pct >= 50 AND d.price_vnd IS NOT NULL
+ORDER BY f.owners_mid DESC NULLS LAST, d.discount_pct DESC
+LIMIT 12
+"""),
+    ]
+
+
+def enable_embedding(dash_id):
+    """Bật static embedding cho dashboard để Streamlit nhúng (iframe có ký JWT)."""
+    secret = ENV.get("METABASE_EMBED_SECRET")
+    if not secret:
+        secret = secrets.token_hex(32)
+        with open(ENV_FILE, "a", encoding="utf-8") as f:
+            f.write(f"\n# Metabase static embedding (scripts/metabase_dashboard.py)\nMETABASE_EMBED_SECRET={secret}\n")
+        print("  đã sinh METABASE_EMBED_SECRET và lưu vào .env")
+    api("PUT", "/setting/embedding-secret-key", json={"value": secret})
+    api("PUT", "/setting/enable-embedding-static", json={"value": True})
+    api("PUT", f"/dashboard/{dash_id}", json={"enable_embedding": True, "embedding_params": {}})
+
+
+def get_or_create_collection(name, parent_id=None):
+    for c in api("GET", "/collection"):
+        if c["name"] == name and (c.get("location") or "/") == (f"/{parent_id}/" if parent_id else "/"):
+            return c["id"]
+    return api("POST", "/collection", json={"name": name, "color": "#2a78d6", "parent_id": parent_id})["id"]
+
+
+def upsert_cards(coll_id, items):
+    """items: [(name, description, display, dataset_query, viz)] -> {name: id}"""
+    existing = {c["name"]: c["id"] for c in api("GET", f"/collection/{coll_id}/items", params={"models": "card"})["data"]}
+    ids = {}
+    for name, desc, display, query, viz in items:
+        body = {"name": name, "description": desc, "display": display, "collection_id": coll_id,
+                "dataset_query": query, "visualization_settings": viz}
+        card = api("PUT", f"/card/{existing[name]}", json=body) if name in existing else api("POST", "/card", json=body)
+        ids[name] = card["id"]
+        print(f"  question {card['id']:>4}  {name}")
+    return ids
+
+
 # ---------------------------------------------------------------- dashboard layout (lưới 24 cột)
 
 def text_card(text, display="text"):
@@ -289,27 +406,21 @@ def main():
     # Mặc định Metabase chỉ lấy 2.000 dòng cho truy vấn SQL; box plot cần toàn bộ giá trị (~3.500 dòng)
     api("PUT", "/setting/unaggregated-query-row-limit", json={"value": 10000})
 
-    coll = next((c for c in api("GET", "/collection") if c["name"] == COLLECTION), None)
-    if coll is None:
-        coll = api("POST", "/collection", json={"name": COLLECTION, "color": "#2a78d6", "parent_id": None})
-    coll_id = coll["id"]
+    coll_id = get_or_create_collection(COLLECTION)
 
     # Tên 5 game đông nhất hiện tại, để gán màu cố định cho từng game trên biểu đồ đường
     probe = api("POST", "/dataset", json=native(
         db_id, "SELECT game_title FROM marts.mart_executive_overview ORDER BY peak_ccu DESC LIMIT 5"))
     top5 = [row[0] for row in probe["data"]["rows"]]
 
-    existing = {c["name"]: c for c in api("GET", f"/collection/{coll_id}/items", params={"models": "card"})["data"]}
-    card_ids = {}
-    for key, name, desc, display, sql, viz in questions(db_id, top5):
-        body = {"name": name, "description": desc, "display": display, "collection_id": coll_id,
-                "dataset_query": native(db_id, sql), "visualization_settings": viz}
-        if name in existing:
-            card = api("PUT", f"/card/{existing[name]['id']}", json=body)
-        else:
-            card = api("POST", "/card", json=body)
-        card_ids[key] = card["id"]
-        print(f"  question {card['id']:>4}  {name}")
+    qs = questions(db_id, top5)
+    by_name = upsert_cards(coll_id, [(name, desc, display, native(db_id, sql), viz)
+                                     for _key, name, desc, display, sql, viz in qs])
+    card_ids = {key: by_name[name] for key, name, *_ in qs}
+
+    st_coll_id = get_or_create_collection(STREAMLIT_COLLECTION, parent_id=coll_id)
+    upsert_cards(st_coll_id, [(name, "Dùng cho Streamlit (dashboard/). Đừng đổi tên cột.", "table",
+                               native(db_id, sql), {}) for name, sql in streamlit_questions()])
 
     dash = next((d for d in api("GET", f"/collection/{coll_id}/items", params={"models": "dashboard"})["data"]
                  if d["name"] == DASHBOARD), None)
@@ -327,7 +438,8 @@ def main():
             dashcards.append({**base, "card_id": card_ids[item], "series": [], "parameter_mappings": [],
                               "visualization_settings": {}})
     api("PUT", f"/dashboard/{dash_id}", json={"tabs": TABS, "dashcards": dashcards, "width": "full"})
-    print(f"\nDashboard {dash_id}: {BASE.removesuffix('/api')}/dashboard/{dash_id}")
+    enable_embedding(dash_id)
+    print(f"\nDashboard {dash_id}: {BASE.removesuffix('/api')}/dashboard/{dash_id} (đã bật nhúng)")
 
 
 if __name__ == "__main__":

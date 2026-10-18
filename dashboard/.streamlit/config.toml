@@ -1,0 +1,29 @@
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# "viewer": ẩn mục dành cho lập trình viên nhưng vẫn giữ menu ⋮ › Settings (chọn sáng/tối)
+toolbarMode = "viewer"
+
+# Font Be Vietnam Pro (thiết kế cho tiếng Việt) cho cả 2 giao diện.
+# Màu theo bảng màu đã kiểm định (dashboard/lib/theme.py dùng cùng giá trị cho biểu đồ).
+[theme]
+font = "'Be Vietnam Pro':https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap, sans-serif"
+baseRadius = "medium"
+
+[theme.light]
+primaryColor = "#2a78d6"
+backgroundColor = "#f9f9f7"
+secondaryBackgroundColor = "#f0efec"
+textColor = "#0b0b0b"
+borderColor = "#e1e0d9"
+
+[theme.dark]
+primaryColor = "#3987e5"
+backgroundColor = "#141413"
+secondaryBackgroundColor = "#232321"
+textColor = "#f0efec"
+borderColor = "#2c2c2a"
