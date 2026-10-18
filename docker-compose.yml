@@ -51,6 +51,8 @@ services:
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT=300
       - AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT=300
+      # Chỉ đổi giờ HIỂN THỊ trên UI sang giờ VN; lịch DAG vẫn chạy theo UTC
+      - AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE=Asia/Ho_Chi_Minh
       - PYTHONPATH=/opt/airflow
       - MINIO_ENDPOINT=minio-datalake:9000
       - POSTGRES_HOST=postgres-dwh
