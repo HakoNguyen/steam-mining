@@ -30,13 +30,19 @@ RANDOM_STATE = 42
 
 
 def label_clusters(profile, df):
-    """Tên cụm: giá (miễn phí / rẻ / cao so với trung vị game trả phí), CCU và tỷ lệ khen so với trung vị toàn tập."""
+    """Tên cụm từ trung vị của cụm so với toàn tập: giá (miễn phí / rẻ / cao so với trung vị game trả phí),
+    CCU (trên / dưới trung vị) và tỷ lệ khen (chênh > 2 điểm % mới gọi cao / thấp, còn lại "trung bình")."""
     paid = df.loc[df["price_vnd"] > 0, "price_vnd"].median()
     ccu, ratio = df["avg_ccu"].median(), df["positive_ratio"].median()
-    labels = profile.apply(lambda r: " · ".join([
-        "Miễn phí" if r["price_vnd"] == 0 else ("Trả phí giá rẻ" if r["price_vnd"] <= paid else "Trả phí giá cao"),
-        "đông người chơi" if r["avg_ccu"] > ccu else "ít người chơi",
-        "khen cao" if r["positive_ratio"] > ratio else "khen thấp hơn"]), axis=1)
+
+    def label(r):
+        price = "Miễn phí" if r["price_vnd"] == 0 else ("Trả phí giá rẻ" if r["price_vnd"] <= paid else "Trả phí giá cao")
+        players = "đông người chơi" if r["avg_ccu"] > ccu else "ít người chơi"
+        praise = ("khen cao" if r["positive_ratio"] > ratio + 0.02 else
+                  "khen thấp" if r["positive_ratio"] < ratio - 0.02 else "khen trung bình")
+        return " · ".join([price, players, praise])
+
+    labels = profile.apply(label, axis=1)
     dup = labels.duplicated(keep=False)
     return labels.where(~dup, labels + " (cụm " + labels.index.astype(str) + ")")
 

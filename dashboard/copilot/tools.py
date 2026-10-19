@@ -23,6 +23,15 @@ MAX_ROWS = 50
 _trace = ContextVar("copilot_trace", default=None)
 
 
+def _norm_sql(column):
+    """So tên tag/thể loại bỏ hoa thường, dấu cách, gạch nối: "roguelike" khớp "Rogue-like"."""
+    return f"REGEXP_REPLACE(LOWER({column}), '[^a-z0-9]', '', 'g')"
+
+
+def _norm(names):
+    return sorted({re.sub(r"[^a-z0-9]", "", n.lower()) for n in names})
+
+
 @contextmanager
 def tracing():
     """with tracing() as trace: ... -> trace là list các {tool, args, sql, n_rows | error} đã chạy trong khối."""
@@ -106,14 +115,14 @@ def market_overview(tag: str | None = None, genre: str | None = None, limit: int
     limit = min(limit, MAX_ROWS)
     table, key, value = ("marts.mart_market_by_genre", "genre_name", genre) if genre else ("marts.mart_market_by_tag", "tag_name", tag)
     if value:
-        rows = _query("market_overview", args, f"SELECT * FROM {table} WHERE LOWER({key}) = LOWER(%(v)s)", {"v": value})
-        if not rows:  # sai chính tả / tên khác -> gợi ý tên gần đúng
-            rows = _query("market_overview", args,
-                          f"SELECT * FROM {table} WHERE {key} ILIKE %(p)s ORDER BY n_games DESC LIMIT %(n)s",
-                          {"p": f"%{value}%", "n": limit})
-            result = {"exact_match": False, "similar": rows}
-        else:
-            result = {"exact_match": True, "market": rows[0]}
+        # khớp đúng (nếu có) đứng đầu, kèm các tên chứa từ khóa (biến thể như Rogue-lite, Action Roguelike)
+        v = _norm([value])[0]
+        rows = _query("market_overview", args, f"""
+            SELECT * FROM {table} WHERE {_norm_sql(key)} LIKE %(p)s
+            ORDER BY {_norm_sql(key)} = %(v)s DESC, n_games DESC LIMIT %(n)s
+        """, {"v": v, "p": f"%{v}%", "n": limit})
+        exact = bool(rows) and _norm([rows[0][key]])[0] == v
+        result = {"market": rows[0] if exact else None, "related": rows[1:] if exact else rows}
     else:
         result = {"top_by_n_games": _query("market_overview", args,
                                            f"SELECT * FROM {table} ORDER BY n_games DESC LIMIT %(n)s", {"n": limit})}
@@ -131,15 +140,16 @@ def tag_opportunities(tags: list[str] | None = None, max_games: int | None = Non
         limit: Số combo trả về.
     """
     args = {"tags": tags, "max_games": max_games, "limit": limit}
-    rows = _query("tag_opportunities", args, """
+    rows = _query("tag_opportunities", args, f"""
         SELECT antecedents AS tags, n_games, ROUND(confidence::NUMERIC, 3) AS confidence, ROUND(lift::NUMERIC, 2) AS lift
         FROM mining.tag_rules
         WHERE is_high_positive
-          AND (CAST(%(tags)s AS TEXT[]) IS NULL OR antecedents @> CAST(%(tags)s AS TEXT[]))
+          AND (CAST(%(tags)s AS TEXT[]) IS NULL
+               OR (SELECT ARRAY_AGG({_norm_sql("a")}) FROM UNNEST(antecedents) AS a) @> CAST(%(tags)s AS TEXT[]))
           AND (%(max_games)s IS NULL OR n_games <= %(max_games)s)
         ORDER BY lift DESC, n_games
         LIMIT %(n)s
-    """, {"tags": tags or None, "max_games": max_games, "n": min(limit, MAX_ROWS)})
+    """, {"tags": _norm(tags) if tags else None, "max_games": max_games, "n": min(limit, MAX_ROWS)})
     base = _baseline("tag_opportunities")
     return _json({"combos": rows, "base_rate_high_positive_pct": base["pct_high_positive"], "n_games_total": base["n_games"]})
 
@@ -157,14 +167,15 @@ def price_benchmark(tags: list[str] | None = None, genre: str | None = None) -> 
         SELECT f.* FROM marts.mart_mining_features AS f
         WHERE {UNIVERSE}
           AND (CAST(%(tags)s AS TEXT[]) IS NULL OR (
-            SELECT COUNT(DISTINCT LOWER(t.tag_name)) FROM dw.bridge_game_tag AS b JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
-            WHERE b.game_id = f.game_id AND b.vote_rank <= 10 AND LOWER(t.tag_name) = ANY(CAST(%(tags)s AS TEXT[]))
+            SELECT COUNT(DISTINCT {_norm_sql("t.tag_name")})
+            FROM dw.bridge_game_tag AS b JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
+            WHERE b.game_id = f.game_id AND b.vote_rank <= 10 AND {_norm_sql("t.tag_name")} = ANY(CAST(%(tags)s AS TEXT[]))
           ) = CARDINALITY(CAST(%(tags)s AS TEXT[])))
           AND (CAST(%(genre)s AS TEXT) IS NULL OR EXISTS (
             SELECT 1 FROM dw.bridge_game_genre AS b JOIN dw.dim_genre AS g ON g.genre_key = b.genre_key
-            WHERE b.game_id = f.game_id AND LOWER(g.genre_name) = LOWER(%(genre)s)))
+            WHERE b.game_id = f.game_id AND {_norm_sql("g.genre_name")} = %(genre)s))
     """
-    params = {"tags": [t.lower() for t in tags] if tags else None, "genre": genre}
+    params = {"tags": _norm(tags) if tags else None, "genre": _norm([genre])[0] if genre else None}
     summary = _query("price_benchmark", args, f"""
         WITH s AS ({scope})
         SELECT COUNT(*) AS n_games, ROUND(100.0 * AVG(is_free::INT), 1) AS pct_free,
@@ -186,7 +197,7 @@ def price_benchmark(tags: list[str] | None = None, genre: str | None = None) -> 
 
 
 def similar_games(game_name: str | None = None, tags: list[str] | None = None, limit: int = 10) -> str:
-    """Game giống nhất theo độ trùng 10 tag đặc trưng (Jaccard), kèm owners, tỷ lệ khen, giá, CCU và phân khúc K-Means.
+    """Game giống nhất theo 10 tag đặc trưng (xếp theo số tag trùng, rồi Jaccard), kèm owners, tỷ lệ khen, giá, CCU và phân khúc K-Means.
     Dùng cho "ý tưởng của tôi giống game nào / làm ăn ra sao" (truyền tags) hoặc "gợi ý game giống X" (truyền game_name).
 
     Args:
@@ -206,13 +217,13 @@ def similar_games(game_name: str | None = None, tags: list[str] | None = None, l
     if not tags:
         raise ValueError("Cần game_name (game có dữ liệu tag) hoặc danh sách tags.")
     rows = _query("similar_games", args, f"""
-        WITH target AS (SELECT DISTINCT LOWER(UNNEST(CAST(%(tags)s AS TEXT[]))) AS tag),
+        WITH target AS (SELECT UNNEST(CAST(%(tags)s AS TEXT[])) AS tag),
         score AS (
           SELECT b.game_id, COUNT(*) AS n_tags, COUNT(target.tag) AS shared,
                  ARRAY_AGG(t.tag_name ORDER BY b.vote_rank) FILTER (WHERE target.tag IS NOT NULL) AS shared_tags
           FROM dw.bridge_game_tag AS b
           JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
-          LEFT JOIN target ON target.tag = LOWER(t.tag_name)
+          LEFT JOIN target ON target.tag = {_norm_sql("t.tag_name")}
           WHERE b.vote_rank <= 10
           GROUP BY b.game_id
         )
@@ -224,9 +235,9 @@ def similar_games(game_name: str | None = None, tags: list[str] | None = None, l
         JOIN marts.mart_mining_features AS f ON f.game_id = s.game_id
         LEFT JOIN mining.game_clusters AS c ON c.game_id = s.game_id
         WHERE s.shared > 0 AND {UNIVERSE} AND f.game_id <> COALESCE(%(exclude)s, -1)
-        ORDER BY jaccard DESC, f.owners_mid DESC NULLS LAST
+        ORDER BY s.shared DESC, jaccard DESC, f.owners_mid DESC NULLS LAST  -- game ít tag không được ưu tiên nhờ Jaccard
         LIMIT %(n)s
-    """, {"tags": tags, "exclude": exclude, "n": min(limit, MAX_ROWS)})
+    """, {"tags": _norm(tags), "exclude": exclude, "n": min(limit, MAX_ROWS)})
     return _json({"target": target, "other_name_matches": others, "target_tags": tags, "similar": rows})
 
 
@@ -239,7 +250,7 @@ def market_segments(game_name: str | None = None) -> str:
     """
     args = {"game_name": game_name}
     result = {"segments": _query("market_segments", args, """
-        SELECT c.cluster_id, c.cluster_label, COUNT(*) AS n_games,
+        SELECT c.cluster_id, c.cluster_label, COUNT(*) AS n_games, COUNT(*) FILTER (WHERE f.is_free) AS n_free_games,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.owners_mid) AS median_owners,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.avg_ccu) AS median_ccu,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.price_vnd) AS median_price_vnd,

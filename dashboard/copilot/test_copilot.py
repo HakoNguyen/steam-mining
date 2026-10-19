@@ -18,3 +18,7 @@ def test_tool_schemas():
     assert set(schemas) == {f.__name__ for f in tools.TOOLS}
     assert schemas["run_readonly_sql"]["required"] == ["query"]
     assert schemas["similar_games"]["properties"]["tags"]["description"]   # mô tả tham số lấy từ docstring
+
+
+def test_norm_matches_tag_spellings():
+    assert tools._norm(["Rogue-like", "roguelike", "Co-op"]) == ["coop", "roguelike"]

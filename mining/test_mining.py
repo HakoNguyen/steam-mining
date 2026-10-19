@@ -43,7 +43,7 @@ def test_kmeans(tmp_path):
     metrics, profile, clustered = run(games, out_dir=tmp_path, k_range=range(2, 6), min_k=2)
     assert metrics["best_k"] == 2 and len(clustered) == 60
     assert sorted(profile["n_games"]) == [30, 30]
-    assert set(profile["cluster_label"]) == {"Miễn phí · đông người chơi · khen thấp hơn",
+    assert set(profile["cluster_label"]) == {"Miễn phí · đông người chơi · khen thấp",
                                              "Trả phí giá rẻ · ít người chơi · khen cao"}
     for f in ["kmeans.joblib", "elbow_silhouette.png", "clusters_pca.png", "cluster_profile.csv"]:
         assert (tmp_path / f).exists()
