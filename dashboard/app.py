@@ -1,6 +1,7 @@
 r"""Steam Market Intelligence: Smart Dashboard + AI Copilot.
 
-Chạy (từ thư mục dashboard/):  ..\.venv\Scripts\streamlit.exe run app.py   ->  http://localhost:8501
+Chạy (từ thư mục dashboard/, đã bật .venv):  python -m streamlit run app.py   ->  http://localhost:8501
+(Không gọi streamlit.exe trực tiếp: Windows Application Control có thể chặn file .exe không ký số trong .venv.)
 """
 import sys
 from pathlib import Path
