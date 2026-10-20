@@ -73,6 +73,9 @@ plugins/__pycache__/
 # SQLMesh (cache biên dịch model, sinh lại được)
 sqlmesh/.cache/
 
+# Kết quả mining (hình, model, CSV): sinh lại từ warehouse, bảng cho Copilot nằm ở schema mining
+mining/outputs/
+
 # ==========================================
 # 5. IDE & OS Metadata
 # ==========================================
