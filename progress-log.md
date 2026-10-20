@@ -109,11 +109,21 @@
 * Marts: dashboard (`mart_ccu_hourly_trend`, `mart_executive_overview`) chỉ lấy top 50 của từng ngày; `mart_mining_features` thêm `app_type`, `owners_min/max`, `release_month`, `publisher_prior_games`, `snapshot_count`, `is_in_universe`.
 * Lưu ý: `create_external_models` gắn `gateway: local` và ghi thêm bản trùng ➔ sau mỗi lần chạy phải bỏ dòng gateway và bản cũ.
 
+### 🔹 Bước 7 (20/10/2026): Thay SteamSpy bằng bảng xếp hạng chính thức của Steam
+* Vấn đề: SteamSpy `top100in2weeks` trả cùng một danh sách và cùng số liệu suốt 15–20/10 (vẫn ghi "Counter-Strike: Global Offensive"), thiếu Dota 2 (hạng 1 thật), Deadlock, AION 2...; không có game bán chạy (vd. Call of Duty: Modern Warfare 4 đứng đầu bán chạy nhờ đặt trước, chưa phát hành).
+* Nguồn mới (`ingestion/catalog.py`), mỗi ngày chụp 2 bảng, gộp lại ~76 game để đo CCU mỗi giờ:
+  - `most_played`: `ISteamChartsService/GetGamesByConcurrentPlayers` (toàn cầu, top 50).
+  - `top_sellers`: Steam Store search `filter=topsellers&category1=998&cc=VN` (chỉ game, khu vực Việt Nam, top 50).
+* `raw.game_catalog_daily` thêm cột `chart`, `concurrent_players`, `peak_ccu_today`; khóa chính `(catalog_date, chart, source, game_id)`. Không xóa dòng cũ: 300 dòng SteamSpy giữ nguyên; `stg_game_catalog` chọn 1 nguồn cho mỗi (ngày, bảng): Steam > SteamSpy > carry_over > fallback.
+* SQLMesh: `fact_game_ranking_daily` grain thêm `chart`; 3 mart dashboard lọc `chart = 'most_played'`; mart mới `mart_top_sellers`. Kiểm tra trên môi trường dev: 3 mart cũ khớp prod 100% trước khi `plan` prod.
+* Metabase + Streamlit: bảng "Bán chạy nhất trên Steam Việt Nam" ở tab Hôm nay; câu tổng CCU lọc `chart = 'most_played'` để không cộng trùng.
+* Mining không bị ảnh hưởng (tập ~2.000 game thu thập riêng); khi train nên lọc `is_in_universe`.
+
 ---
 
 ## 🎯 BƯỚC TIẾP THEO (NEXT ACTION)
 1. Giai đoạn 4: Metabase kết nối schema `marts`, dựng question/dashboard; Streamlit Smart Dashboard lấy dữ liệu qua Metabase API.
 2. HUYNH: lấy dữ liệu từ `marts.mart_mining_features`, `dw.bridge_game_tag` (`vote_rank`), `dw.bridge_game_genre`, `dw.fact_game_reviews`.
 3. Để máy (kèm WARP) chạy liên tục vài ngày trước buổi báo cáo để có đủ CCU theo giờ.
-4. Theo dõi SteamSpy `top100in2weeks`: số CCU ngày 15/10 và 16/10 giống hệt nhau, có thể SteamSpy chưa cập nhật.
+4. ~~Theo dõi SteamSpy `top100in2weeks`~~ ➔ đã thay bằng bảng xếp hạng chính thức của Steam (Bước 7).
 5. Cân nhắc phân trang Reviews API (`cursor`, `filter=recent`) nếu cần nhiều review hơn cho NLP.

@@ -36,9 +36,9 @@ Hệ thống Kho dữ liệu (Data Warehouse) và Khai phá dữ liệu (Data Mi
 
 | DAG | Lịch (UTC) | Việc |
 |---|---|---|
-| `steam_daily_catalog_sync` | 00:00 hằng ngày | Chọn top 50 game (SteamSpy) → `raw.game_catalog_daily` |
+| `steam_daily_catalog_sync` | 00:00 hằng ngày | Chụp 2 bảng xếp hạng chính thức của Steam: top 50 nhiều người chơi + top 50 bán chạy (VN) → `raw.game_catalog_daily` |
 | `steam_hourly_ccu_ingestion` | mỗi giờ | CCU của top 50 → MinIO |
-| `steam_weekly_metadata_ingestion` | hằng ngày | Store appdetails + SteamSpy của top 50 → MinIO |
+| `steam_weekly_metadata_ingestion` | hằng ngày | Store appdetails + SteamSpy của các game trong 2 bảng xếp hạng → MinIO |
 | `steam_daily_reviews_ingestion` | hằng ngày | Review của top 50 → MinIO |
 | `steam_weekly_universe_ingestion` | 01:00 thứ Hai | ~2.000 game nhiều owners nhất (phục vụ Data Mining): Store browse, SteamSpy, CCU, review → MinIO |
 | `transformation_staging_to_warehouse` | phút 15 mỗi giờ | Nạp file mới vào `raw` (incremental theo watermark) → `sqlmesh run` |

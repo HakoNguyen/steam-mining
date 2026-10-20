@@ -1,10 +1,13 @@
 - name: '"steam_dwh"."raw"."game_catalog_daily"'
   columns:
     catalog_date: DATE
+    chart: VARCHAR(20)
     ranking_order: INT
     game_id: INT
     game_title: VARCHAR(255)
     ccu_2weeks: INT
+    concurrent_players: INT
+    peak_ccu_today: INT
     source: VARCHAR(50)
     created_at: TIMESTAMPTZ
 - name: '"steam_dwh"."raw"."game_universe"'

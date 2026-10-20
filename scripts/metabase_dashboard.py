@@ -56,7 +56,8 @@ def native(db_id, sql):
 TOP50_DAILY = """
 SELECT p.full_date AS "Ngày", SUM(p.peak_ccu) AS "Tổng CCU đỉnh"
 FROM dw.fact_daily_game_performance AS p
-JOIN dw.fact_game_ranking_daily AS r ON r.game_id = p.game_id AND r.full_date = p.full_date
+JOIN dw.fact_game_ranking_daily AS r
+  ON r.game_id = p.game_id AND r.full_date = p.full_date AND r.chart = 'most_played'
 GROUP BY p.full_date
 ORDER BY p.full_date
 """
@@ -138,6 +139,26 @@ ORDER BY pct DESC
           "graph.show_values": True,
           "column_settings": {col("Tăng (%)"): {"suffix": "%"}, col("Giảm (%)"): {"suffix": "%"}},
           "graph.x_axis.title_text": "", "graph.y_axis.title_text": ""}),
+        ("c_top_sellers", "Top 15 bán chạy trên Steam Việt Nam",
+         "Bảng xếp hạng bán chạy chính thức của Steam (khu vực Việt Nam) ngày mới nhất; gồm cả game đang cho đặt trước.",
+         "table", """
+SELECT rank AS "Hạng",
+       CASE WHEN rank_yesterday IS NULL THEN 'Mới'
+            WHEN rank_change > 0 THEN '▲ ' || rank_change
+            WHEN rank_change < 0 THEN '▼ ' || ABS(rank_change)
+            ELSE '=' END AS "So với hôm trước",
+       game_title AS "Game",
+       CASE WHEN is_upcoming THEN 'Sắp ra mắt ' || TO_CHAR(release_date, 'DD/MM') ELSE '' END AS "Ghi chú",
+       CASE WHEN is_free THEN 'Miễn phí'
+            WHEN price_vnd IS NULL THEN '—'
+            ELSE REPLACE(TO_CHAR(price_vnd, 'FM999,999,999'), ',', '.') || ' ₫' END AS "Giá",
+       NULLIF(discount_pct, 0) AS "% giảm",
+       most_played_rank AS "Hạng người chơi"
+FROM marts.mart_top_sellers
+ORDER BY rank
+LIMIT 15
+""",
+         {"column_settings": {col("% giảm"): {"suffix": "%"}}}),
 
         # ---- Tab Người chơi
         ("c_hourly", "CCU theo giờ của 5 game đông nhất (giờ VN, thang log)",
@@ -256,7 +277,8 @@ def streamlit_questions():
         ("[Streamlit] KPI CCU theo ngày", """
 SELECT p.full_date AS full_date, SUM(p.peak_ccu) AS total_peak_ccu
 FROM dw.fact_daily_game_performance AS p
-JOIN dw.fact_game_ranking_daily AS r ON r.game_id = p.game_id AND r.full_date = p.full_date
+JOIN dw.fact_game_ranking_daily AS r
+  ON r.game_id = p.game_id AND r.full_date = p.full_date AND r.chart = 'most_played'
 GROUP BY p.full_date
 ORDER BY p.full_date
 """),
@@ -272,6 +294,12 @@ SELECT
 SELECT full_date, ranking_order, game_id, game_title, genres, is_free, price_vnd, discount_pct, peak_ccu, avg_ccu
 FROM marts.mart_executive_overview
 ORDER BY peak_ccu DESC
+"""),
+        ("[Streamlit] Top bán chạy", """
+SELECT catalog_date, rank, rank_yesterday, rank_change, game_id, game_title, genres, is_free, price_vnd,
+       price_initial_vnd, discount_pct, release_date, is_upcoming, most_played_rank
+FROM marts.mart_top_sellers
+ORDER BY rank
 """),
         ("[Streamlit] Biến động top 50", """
 SELECT report_date, game_id, game_title, status, rank_today, rank_yesterday, peak_ccu_today, peak_ccu_yesterday,
@@ -376,7 +404,7 @@ TABS = [{"id": -1, "name": "Hôm nay"}, {"id": -2, "name": "Người chơi"}, {"
 LAYOUT = [
     # (tab, key hoặc ("heading"/"text", nội dung), row, col, w, h)
     (-1, ("heading", "Thị trường Steam hôm nay"), 0, 0, 24, 1),
-    (-1, ("text", "Số liệu của **ngày gần nhất đã đủ dữ liệu** (UTC). Top 50 lấy từ SteamSpy; CCU đo mỗi giờ."), 1, 0, 24, 1),
+    (-1, ("text", "Số liệu của **ngày gần nhất đã đủ dữ liệu** (UTC). Bảng xếp hạng chính thức của Steam; CCU đo mỗi giờ."), 1, 0, 24, 1),
     (-1, "k_ccu", 2, 0, 5, 3),
     (-1, "k_games", 2, 5, 5, 3),
     (-1, "k_price", 2, 10, 5, 3),
@@ -384,6 +412,7 @@ LAYOUT = [
     (-1, "k_discount", 2, 19, 5, 3),
     (-1, "c_top10", 5, 0, 12, 9),
     (-1, "c_movers", 5, 12, 12, 9),
+    (-1, "c_top_sellers", 14, 0, 24, 9),
 
     (-2, ("heading", "Người chơi online lúc nào?"), 0, 0, 24, 1),
     (-2, ("text", "Giờ hiển thị theo **giờ Việt Nam**. Khoảng trống trên biểu đồ là giờ máy chủ thu thập không chạy."), 1, 0, 24, 1),

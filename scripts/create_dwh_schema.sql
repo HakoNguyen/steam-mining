@@ -28,16 +28,21 @@ CREATE TABLE IF NOT EXISTS raw.load_watermark (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Daily Seed List: snapshot Top 50 game mỗi ngày (ingestion/catalog.py ghi, mọi DAG đọc chung)
+-- Daily Seed List: mỗi ngày 2 bảng xếp hạng chính thức của Steam (ingestion/catalog.py ghi, mọi DAG đọc chung)
+--   chart = 'most_played' (nhiều người chơi nhất, toàn cầu) | 'top_sellers' (bán chạy nhất, Steam Việt Nam)
+-- Trước 20/10/2026 nguồn là SteamSpy top100in2weeks (source = 'steamspy_top100in2weeks', chart = 'most_played')
 CREATE TABLE IF NOT EXISTS raw.game_catalog_daily (
     catalog_date DATE NOT NULL,
-    ranking_order INT NOT NULL,
+    chart VARCHAR(20) NOT NULL DEFAULT 'most_played',
+    ranking_order INT NOT NULL,                         -- thứ hạng trong bảng xếp hạng của ngày đó
     game_id INT NOT NULL,
     game_title VARCHAR(255),
-    ccu_2weeks INT,                                     -- thực chất là CCU đỉnh hôm qua theo SteamSpy (staging đổi tên thành ccu_peak_yesterday)
-    source VARCHAR(50) DEFAULT 'steamspy_top100in2weeks',  -- 'carry_over' | 'fallback' khi API lỗi
+    ccu_2weeks INT,                                     -- chỉ nguồn SteamSpy cũ
+    concurrent_players INT,                             -- most_played: số người đang chơi lúc chụp bảng xếp hạng
+    peak_ccu_today INT,                                 -- most_played: đỉnh trong ngày theo Steam
+    source VARCHAR(50) NOT NULL DEFAULT 'steamspy_top100in2weeks',  -- 'steam_charts' | 'steam_store_topsellers' | 'carry_over' | 'fallback'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (catalog_date, game_id)
+    PRIMARY KEY (catalog_date, chart, source, game_id)
 );
 
 -- Game Universe: ~2.000 game nhiều owners nhất (SteamSpy request=all), chụp mỗi tuần cho Data Mining (ingestion/universe.py)

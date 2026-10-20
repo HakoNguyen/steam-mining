@@ -2,7 +2,7 @@ MODEL (
   name marts.mart_daily_movers,
   kind VIEW,
   grain (report_date, game_id),
-  description 'Biến động top 50 giữa ngày gần nhất đã đủ dữ liệu và ngày liền trước: thay đổi CCU, thứ hạng, game vào/ra top 50, giảm giá sâu. Dùng cho bản tin thị trường',
+  description 'Biến động top 50 nhiều người chơi nhất (bảng most_played) giữa ngày gần nhất đã đủ dữ liệu và ngày liền trước: thay đổi CCU, thứ hạng, game vào/ra top 50, giảm giá sâu. Dùng cho bản tin thị trường',
   column_descriptions (
     report_date = 'Ngày báo cáo (ngày gần nhất đã đủ dữ liệu, UTC)',
     game_id = 'Steam appid',
@@ -25,15 +25,16 @@ MODEL (
 WITH report AS (
   SELECT MAX(p.full_date) AS report_date
   FROM dw.fact_daily_game_performance AS p
-  JOIN staging.stg_game_catalog AS c ON c.game_id = p.game_id AND c.catalog_date = p.full_date
+  JOIN staging.stg_game_catalog AS c
+    ON c.game_id = p.game_id AND c.catalog_date = p.full_date AND c.chart = 'most_played'
 ), top_today AS (
   SELECT c.game_id, c.ranking_order
   FROM staging.stg_game_catalog AS c, report AS r
-  WHERE c.catalog_date = r.report_date
+  WHERE c.catalog_date = r.report_date AND c.chart = 'most_played'
 ), top_yesterday AS (
   SELECT c.game_id, c.ranking_order
   FROM staging.stg_game_catalog AS c, report AS r
-  WHERE c.catalog_date = r.report_date - 1
+  WHERE c.catalog_date = r.report_date - 1 AND c.chart = 'most_played'
 ), games AS (
   SELECT game_id FROM top_today
   UNION

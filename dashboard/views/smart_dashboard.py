@@ -36,6 +36,39 @@ def card(title, caption, fig, table=None):
                 st.dataframe(table, hide_index=True, width="stretch")
 
 
+def seller_table(df, n=15):
+    """Bảng xếp hạng bán chạy: chỉ có thứ hạng (không có số lượng bán) nên trình bày dạng bảng, không vẽ cột."""
+    d = df.nsmallest(n, "rank")
+
+    def change(r):
+        if pd.isna(r["rank_yesterday"]):
+            return t("rank_new")
+        c = int(r["rank_change"])
+        return f"▲ {c}" if c > 0 else f"▼ {-c}" if c < 0 else "="
+
+    def price(r):
+        if pd.notna(r["is_free"]) and bool(r["is_free"]):
+            return t("free")
+        return fmt.vnd(r["price_vnd"]) if pd.notna(r["price_vnd"]) else "—"
+
+    table = pd.DataFrame({
+        t("col_rank"): d["rank"].astype(int),
+        t("col_rank_change"): d.apply(change, axis=1),
+        t("col_game"): d["game_title"],
+        t("col_note"): [t("upcoming", date=fmt.short_date(rd)) if up else ""
+                        for up, rd in zip(d["is_upcoming"], d["release_date"])],
+        t("col_price_text"): d.apply(price, axis=1),
+        t("col_discount"): d["discount_pct"].where(d["discount_pct"] > 0),
+        t("col_mp_rank"): d["most_played_rank"],
+    })
+    st.dataframe(table, hide_index=True, width="stretch", height=35 * (len(table) + 1) + 3,
+                 column_config={
+                     t("col_rank"): st.column_config.NumberColumn(width="small"),
+                     t("col_discount"): st.column_config.NumberColumn(format="%d%%", width="small"),
+                     t("col_mp_rank"): st.column_config.NumberColumn(format="%d", width="small"),
+                 })
+
+
 def line_colors(selected):
     """Màu gắn theo game, không theo thứ tự: bỏ chọn một game thì các game còn lại giữ nguyên màu."""
     slots = st.session_state.setdefault("line_slots", {})
@@ -53,6 +86,7 @@ try:
     kpi_ccu = metabase.run("[Streamlit] KPI CCU theo ngày")
     kpi = metabase.run("[Streamlit] KPI thị trường").iloc[0]
     top50 = metabase.run("[Streamlit] Top 50 hôm nay")
+    top_sellers = metabase.run("[Streamlit] Top bán chạy")
     movers = metabase.run("[Streamlit] Biến động top 50")
     hourly = metabase.run("[Streamlit] CCU theo giờ (top 50, 7 ngày)")
     heat = metabase.run("[Streamlit] CCU theo giờ và thứ")
@@ -90,7 +124,7 @@ tab_today, tab_players, tab_market = st.tabs(tab_labels("sd_tab", ["tab_today", 
 
 # ------------------------------------------------------------------ Hôm nay
 with tab_today:
-    takeaways(insights.today(top50, movers, kpi))
+    takeaways(insights.today(top50, movers, kpi) + insights.sellers(top_sellers))
     left, right = st.columns(2)
     with left:
         card(t("c_top10_title"), t("c_top10_cap"), charts.top_ccu(top50, p),
@@ -102,6 +136,11 @@ with tab_today:
                   game_title="col_game", peak_ccu_change_pct="col_change", peak_ccu_today="col_ccu_today",
                   peak_ccu_yesterday="col_ccu_yesterday", snapshots_today="col_snaps_today",
                   snapshots_yesterday="col_snaps_yesterday"))
+    if not top_sellers.empty:
+        with st.container(border=True):
+            st.markdown(f"#### {t('c_sellers_title')}")
+            st.caption(t("c_sellers_cap", date=f"{_ts(top_sellers['catalog_date']).iloc[0]:%d/%m/%Y}"))
+            seller_table(top_sellers)
 
 # ------------------------------------------------------------------ Người chơi
 with tab_players:
