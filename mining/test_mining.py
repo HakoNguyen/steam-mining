@@ -28,6 +28,17 @@ def test_association_rules(tmp_path):
         assert (tmp_path / f).exists()
 
 
+def test_association_rules_n_games_counts_combo(tmp_path):
+    """n_games = số game có combo (đối thủ), kể cả khi chỉ một phần được khen cao (confidence < 1)."""
+    from mining.association_rules import run
+
+    tx = {i: ["Roguelike", "Indie"] if i < 20 else ["FPS", "Shooter"] for i in range(40)}
+    praised = set(range(15))   # 15/20 game Roguelike+Indie được khen cao -> confidence 0,75
+    _, table = run(tx, high_positive_ids=praised, out_dir=tmp_path, min_support=0.2)
+    row = table[table["is_high_positive"] & table["antecedents"].apply(lambda a: a == ["Indie", "Roguelike"])].iloc[0]
+    assert row["n_games"] == 20 and abs(row["confidence"] - 0.75) < 1e-9
+
+
 def test_kmeans(tmp_path):
     from mining.kmeans_clustering import run
 
@@ -45,6 +56,7 @@ def test_kmeans(tmp_path):
     assert sorted(profile["n_games"]) == [30, 30]
     assert set(profile["cluster_label"]) == {"Miễn phí · đông người chơi · khen thấp",
                                              "Trả phí giá rẻ · ít người chơi · khen cao"}
+    assert (clustered["distance_to_center"] >= 0).all()
     for f in ["kmeans.joblib", "elbow_silhouette.png", "clusters_pca.png", "cluster_profile.csv"]:
         assert (tmp_path / f).exists()
 

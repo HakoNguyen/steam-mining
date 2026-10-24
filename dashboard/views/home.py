@@ -18,11 +18,12 @@ if metabase.available():
         pass
 
 st.subheader(t("home_start"))
-cols = st.columns(3)
+cols = st.columns(4)
 pages = [
     ("views/smart_dashboard.py", ":material/monitoring:", t("nav_smart"), t("home_smart_desc")),
+    ("views/mining.py", ":material/hub:", t("nav_mining"), t("home_mining_desc")),
     ("views/explore.py", ":material/travel_explore:", t("nav_explore"), t("home_explore_desc")),
-    ("views/copilot.py", ":material/smart_toy:", t("nav_copilot"), t("home_copilot_desc")),
+    ("views/copilot_page.py", ":material/smart_toy:", t("nav_copilot"), t("home_copilot_desc")),
 ]
 for col, (path, icon, title, desc) in zip(cols, pages):
     with col.container(border=True, height="stretch"):

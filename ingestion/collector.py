@@ -65,9 +65,14 @@ def fetch_steam_api(url, impersonate='chrome124', retries=3):
             if response.status_code == 200:
                 return response.json()
             print(f"  [Retry {attempt+1}/{retries}] HTTP {response.status_code} from {url}")
+            if response.status_code == 429 and attempt < retries - 1:
+                # Bị giới hạn tốc độ: chờ theo Retry-After (nếu có), không thì 30s, 60s
+                wait = response.headers.get("Retry-After")
+                time.sleep(int(wait) if wait and wait.isdigit() else 30 * (attempt + 1))
+                continue
         except Exception as e:
             print(f"  [Retry {attempt+1}/{retries}] Error fetching {url}: {e}")
-        # Chờ tăng dần 2s, 4s (không chờ sau lần cuối), áp dụng cho cả lỗi mạng lẫn HTTP != 200
+        # Chờ tăng dần 2s, 4s (không chờ sau lần cuối), áp dụng cho lỗi mạng và HTTP lỗi khác
         if attempt < retries - 1:
             time.sleep(2 ** (attempt + 1))
     print(f"  [Gave up] {url}")
@@ -100,10 +105,13 @@ def collect_steamspy(appid, client):
     return False
 
 def collect_reviews(appid, client):
-    url = f"https://store.steampowered.com/appreviews/{appid}?json=1&language=english&cursor=*&num_per_page=50"
-    data = fetch_steam_api(url)
-    if data:
-        save_json_to_minio(client, "reviews", appid, data)
+    # Steam tắt store.steampowered.com/appreviews?json=1 từ 22/10/2026 -> dùng IUserReviewsService (không cần key)
+    input_json = json.dumps({"appid": appid, "languages": ["english"], "cursor": "*", "num_per_page": 50})
+    data = fetch_steam_api(f"https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?input_json={quote(input_json)}")
+    # Bỏ lớp "response" để file giữ đúng dạng cũ (query_summary, reviews, cursor) -> stg_reviews không phải sửa
+    payload = (data or {}).get("response")
+    if payload:
+        save_json_to_minio(client, "reviews", appid, payload)
         return True
     return False
 
@@ -128,15 +136,27 @@ def collect_store_browse(appids, client, batch_size=50):
         time.sleep(1)
     return failed
 
+MAX_CONSECUTIVE_FAILS = 10
+
+
 def collect_batch(appids, collectors, client, min_success_rate=0.8, retry_wait=30, pause=0):
     """Chạy từng collector cho mọi appid, thử lại các game lỗi 1 lượt.
-    pause: số giây nghỉ giữa 2 lần gọi (SteamSpy appdetails ~1 req/s, Store reviews ~200 req/5 phút).
+    pause: số giây nghỉ giữa 2 lần gọi (SteamSpy appdetails ~1 req/s, GetAppReviews không key ~1 req/1,5s).
     Raise lỗi (task Airflow chuyển failed) nếu tỷ lệ thành công thấp hơn min_success_rate."""
     def run(collect_fn, ids):
-        failed = []
-        for appid in ids:
-            if not collect_fn(appid, client):
+        failed, streak = [], 0
+        for i, appid in enumerate(ids):
+            if collect_fn(appid, client):
+                streak = 0
+            else:
                 failed.append(appid)
+                streak += 1
+                # 10 game lỗi liên tiếp = mạng bị chặn hoặc Steam đang khóa IP: dừng sớm thay vì gõ cửa hàng giờ
+                # (gõ tiếp chỉ làm bị khóa lâu hơn); Airflow sẽ thử lại cả task sau retry_delay
+                if streak >= MAX_CONSECUTIVE_FAILS:
+                    print(f"[Collector] {collect_fn.__name__}: {streak} lỗi liên tiếp, dừng sớm.")
+                    failed.extend(ids[i + 1:])
+                    break
             if pause:
                 time.sleep(pause)
         return failed

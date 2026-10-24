@@ -11,6 +11,7 @@ from pathlib import Path
 
 import joblib
 import matplotlib
+import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
@@ -62,7 +63,9 @@ def run(games, out_dir=OUT_DIR, k_range=range(2, 11), min_k=3):
     # k=2 chỉ tách miễn phí / trả phí (log giá 2 đỉnh: 0 và ~12) -> chọn silhouette cao nhất với k >= min_k
     best_k = max((k for k in silhouette if k >= min_k), key=silhouette.get)
     model = models[best_k]
-    df = df.assign(cluster=model.labels_)
+    # khoảng cách tới tâm cụm (không gian đã chuẩn hóa): nhỏ = game tiêu biểu cho cụm
+    df = df.assign(cluster=model.labels_,
+                   distance_to_center=np.linalg.norm(X - model.cluster_centers_[model.labels_], axis=1).round(4))
 
     fig, ax1 = plt.subplots(figsize=(8, 4.5))
     ax1.plot(ks, [inertia[k] for k in ks], "o-", color="#4C72B0")
@@ -96,11 +99,12 @@ def run(games, out_dir=OUT_DIR, k_range=range(2, 11), min_k=3):
     profile.insert(0, "n_games", df["cluster"].value_counts().sort_index())
     profile.insert(0, "cluster_label", label_clusters(profile, df))
     if "game_title" in df:
-        profile["examples"] = df.sort_values("owners_mid", ascending=False).groupby("cluster")["game_title"] \
+        # game gần tâm nhất: game nhiều owners nhất thường nằm ở rìa cụm và trông không khớp với tên cụm
+        profile["examples"] = df.sort_values("distance_to_center").groupby("cluster")["game_title"] \
             .apply(lambda s: "; ".join(s.head(5)))
     profile.to_csv(out_dir / "cluster_profile.csv", encoding="utf-8-sig")
     df = df.assign(cluster_label=df["cluster"].map(profile["cluster_label"]))
-    df[["cluster", "cluster_label"]].to_csv(out_dir / "game_clusters.csv", encoding="utf-8-sig")
+    df[["cluster", "cluster_label", "distance_to_center"]].to_csv(out_dir / "game_clusters.csv", encoding="utf-8-sig")
 
     joblib.dump({"scaler": scaler, "model": model, "features": FEATURES}, out_dir / "kmeans.joblib")
     metrics = {"n_games": len(df), "features": FEATURES, "best_k": best_k,
@@ -114,7 +118,7 @@ if __name__ == "__main__":
     from mining.prepare_data import load_games, save_table
 
     metrics, profile, df = run(load_games())
-    save_table(df.reset_index()[["game_id", "cluster", "cluster_label"]].rename(columns={"cluster": "cluster_id"}),
-               "game_clusters")
+    save_table(df.reset_index()[["game_id", "cluster", "cluster_label", "distance_to_center"]]
+               .rename(columns={"cluster": "cluster_id"}), "game_clusters")
     print(json.dumps(metrics, indent=2, ensure_ascii=False))
     print(profile.to_string())

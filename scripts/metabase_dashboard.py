@@ -345,6 +345,38 @@ JOIN dw.dim_genre AS g ON g.genre_key = b.genre_key
 JOIN top_genres AS t ON t.genre_name = g.genre_name
 WHERE f.is_in_universe AND f.app_type = 'game' AND NOT f.is_free AND f.price_vnd > 0
 """),
+        # ---- Trang Khai phá dữ liệu (kết quả mining/association_rules.py, mining/kmeans_clustering.py)
+        # n_games trong tag_rules = số game có combo (mức cạnh tranh); số game được khen cao = n_games * confidence
+        ("[Streamlit] Mining luật khen cao", """
+SELECT ARRAY_TO_STRING(antecedents, ' + ') AS combo, CARDINALITY(antecedents) AS n_tags,
+       support, confidence, lift, ROUND(n_games * confidence)::INT AS n_high_positive,
+       n_games AS n_games_with_combo
+FROM mining.tag_rules
+WHERE is_high_positive
+ORDER BY lift DESC
+"""),
+        ("[Streamlit] Mining luật giữa các tag", """
+SELECT ARRAY_TO_STRING(antecedents, ' + ') AS antecedent, ARRAY_TO_STRING(consequents, ' + ') AS consequent,
+       support, confidence, lift
+FROM mining.tag_rules
+WHERE NOT is_high_positive
+ORDER BY lift DESC, confidence DESC
+LIMIT 40
+"""),
+        ("[Streamlit] Mining tổng quan luật", """
+SELECT (SELECT COUNT(*) FROM mining.tag_rules) AS n_rules,
+       (SELECT COUNT(*) FROM mining.tag_rules WHERE is_high_positive) AS n_high_positive_rules,
+       (SELECT AVG(is_high_positive::INT) FROM marts.mart_mining_features
+         WHERE is_in_universe AND app_type = 'game') AS base_rate,
+       (SELECT COUNT(DISTINCT b.game_id) FROM dw.bridge_game_tag AS b
+         JOIN marts.mart_mining_features AS f USING (game_id)
+         WHERE f.is_in_universe AND f.app_type = 'game' AND b.vote_rank <= 10) AS n_transactions
+"""),
+        ("[Streamlit] Mining phân cụm game", """
+SELECT c.cluster_id, c.cluster_label, f.game_title, f.owners_mid, f.avg_ccu, f.price_vnd, f.positive_ratio, f.is_free
+FROM mining.game_clusters AS c
+JOIN marts.mart_mining_features AS f USING (game_id)
+"""),
         ("[Streamlit] Game giảm giá sâu", """
 SELECT d.game_title, d.price_initial_vnd, d.price_vnd, d.discount_pct, f.owners_mid
 FROM dw.dim_game AS d

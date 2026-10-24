@@ -1,5 +1,6 @@
 import os
 import json
+import socket
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dotenv import dotenv_values
@@ -8,15 +9,30 @@ from datetime import datetime
 
 config = dotenv_values('.env')
 
+
+def _resolvable(host):
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except socket.gaierror:
+        return False
+
+
+# Tên máy trong mạng Docker (postgres-dwh, minio-datalake) chỉ phân giải được bên trong container. Chạy script trên
+# máy mà terminal còn giữ các tên này (VS Code nạp .env vào terminal và nhớ bản cũ) thì dùng cổng đã mở ra localhost.
 # PostgreSQL
 DB_HOST = os.environ.get('POSTGRES_HOST') or config.get('POSTGRES_HOST') or 'localhost'
 DB_PORT = os.environ.get("POSTGRES_PORT") or config.get("POSTGRES_PORT") or "5433"
+if not _resolvable(DB_HOST):
+    DB_HOST, DB_PORT = "localhost", "5433"
 DB_NAME = config.get("POSTGRES_DB", "steam_dwh")
 DB_USER = config.get("POSTGRES_USER", "admin")
 DB_PASS = config.get("POSTGRES_PASSWORD", "adminpassword123")
 
 # MinIO
 MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT") or config.get("MINIO_ENDPOINT") or "localhost:9000"
+if not _resolvable(MINIO_ENDPOINT.split(":")[0]):
+    MINIO_ENDPOINT = "localhost:9000"
 MINIO_ROOT_USER = config.get("MINIO_ROOT_USER", "admin")
 MINIO_ROOT_PASSWORD = config.get("MINIO_ROOT_PASSWORD", "adminpassword123")
 MINIO_BUCKET_NAME = config.get("MINIO_BUCKET_NAME", "raw-steam-data")

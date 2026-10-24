@@ -5,9 +5,11 @@ Mỗi câu SQL đã chạy được ghi vào trace để giao diện hiện mụ
 
 Cần chạy mining trước (mining/association_rules.py, mining/kmeans_clustering.py) để có mining.tag_rules, mining.game_clusters.
 """
+import functools
 import json
 import os
 import re
+import socket
 from contextlib import contextmanager
 from contextvars import ContextVar
 from decimal import Decimal
@@ -17,7 +19,9 @@ import psycopg2
 from dotenv import dotenv_values
 from psycopg2.extras import RealDictCursor
 
-ENV = {**dotenv_values(Path(__file__).resolve().parents[2] / ".env"), **os.environ}
+# Giá trị trong .env thắng biến môi trường: VS Code nạp .env vào terminal lúc mở và nhớ bản cũ, nên sửa .env
+# (đổi COPILOT_PROVIDER, khóa API) rồi chạy lại vẫn bị bản cũ ghi đè. Không có .env (Docker) thì dùng os.environ.
+ENV = {**os.environ, **{k: v for k, v in dotenv_values(Path(__file__).resolve().parents[2] / ".env").items() if v}}
 UNIVERSE = "f.is_in_universe AND f.app_type = 'game'"
 MAX_ROWS = 50
 _trace = ContextVar("copilot_trace", default=None)
@@ -43,10 +47,23 @@ def tracing():
         _trace.reset(token)
 
 
+@functools.cache
+def _db_address():
+    """Host/port chỉ lấy từ biến môi trường (Docker đặt postgres-dwh:5432); chạy trên máy thì localhost:5433.
+    VS Code tự nạp .env (POSTGRES_HOST=postgres-dwh, tên chỉ có trong mạng Docker) vào terminal, nên tên máy không
+    phân giải được thì hiểu là đang chạy ngoài Docker và dùng localhost:5433."""
+    host, port = os.environ.get("POSTGRES_HOST", "localhost"), os.environ.get("POSTGRES_PORT", "5433")
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return "localhost", "5433"
+    return host, port
+
+
 def _connect():
-    # Host/port chỉ lấy từ biến môi trường (Docker đặt postgres-dwh:5432); .env ghi host theo mạng Docker nên chạy
-    # trên máy thì mặc định localhost:5433. Quyền chỉ-đọc + timeout 5s do role copilot_ro đảm bảo ở phía DB.
-    conn = psycopg2.connect(host=os.environ.get("POSTGRES_HOST", "localhost"), port=os.environ.get("POSTGRES_PORT", "5433"),
+    # Quyền chỉ-đọc + timeout 5s do role copilot_ro đảm bảo ở phía DB.
+    host, port = _db_address()
+    conn = psycopg2.connect(host=host, port=port,
                             dbname=ENV.get("POSTGRES_DB", "steam_dwh"), user=ENV.get("COPILOT_DB_USER", "copilot_ro"),
                             password=ENV.get("COPILOT_DB_PASSWORD"), cursor_factory=RealDictCursor)
     conn.set_session(readonly=True, autocommit=True)
@@ -57,7 +74,11 @@ def _query(tool, args, sql, params=None):
     entry = {"tool": tool, "args": args, "sql": sql.strip()}
     if (trace := _trace.get()) is not None:
         trace.append(entry)
-    conn = _connect()
+    try:
+        conn = _connect()
+    except psycopg2.Error as e:  # ghi vào trace để giao diện hiện đúng lỗi kết nối
+        entry["error"] = f"Không kết nối được database: {str(e).strip()}"
+        raise
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params)
@@ -69,6 +90,23 @@ def _query(tool, args, sql, params=None):
         conn.close()
     entry["n_rows"] = len(rows)
     return rows
+
+
+def _exists(table):
+    """Bảng có tồn tại không (vd. mining.* chỉ có sau khi chạy script mining); không ghi vào trace."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_regclass(%s) IS NOT NULL AS ok", (table,))
+            return cur.fetchone()["ok"]
+    finally:
+        conn.close()
+
+
+def _require_mining(table):
+    if not _exists(table):
+        raise ValueError(f"Warehouse chưa có kết quả khai phá dữ liệu ({table}): chưa chạy script mining. "
+                         "Đừng gọi lại công cụ này; trả lời bằng market_overview / price_benchmark và nói rõ phần còn thiếu.")
 
 
 def _json(data):
@@ -113,16 +151,22 @@ def market_overview(tag: str | None = None, genre: str | None = None, limit: int
     """
     args = {"tag": tag, "genre": genre, "limit": limit}
     limit = min(limit, MAX_ROWS)
-    table, key, value = ("marts.mart_market_by_genre", "genre_name", genre) if genre else ("marts.mart_market_by_tag", "tag_name", tag)
+    tables = {"genre": ("marts.mart_market_by_genre", "genre_name"), "tag": ("marts.mart_market_by_tag", "tag_name")}
+    kind, value = ("genre", genre) if genre else ("tag", tag)
     if value:
-        # khớp đúng (nếu có) đứng đầu, kèm các tên chứa từ khóa (biến thể như Rogue-lite, Action Roguelike)
+        # khớp đúng (nếu có) đứng đầu, kèm các tên chứa từ khóa (biến thể như Rogue-lite, Action Roguelike).
+        # Không thấy thì thử loại còn lại: nhiều tên vừa giống thể loại vừa là tag (vd. "Survival" là tag, không phải thể loại).
         v = _norm([value])[0]
-        rows = _query("market_overview", args, f"""
-            SELECT * FROM {table} WHERE {_norm_sql(key)} LIKE %(p)s
-            ORDER BY {_norm_sql(key)} = %(v)s DESC, n_games DESC LIMIT %(n)s
-        """, {"v": v, "p": f"%{v}%", "n": limit})
+        for k in (kind, "tag" if kind == "genre" else "genre"):
+            table, key = tables[k]
+            rows = _query("market_overview", args, f"""
+                SELECT * FROM {table} WHERE {_norm_sql(key)} LIKE %(p)s
+                ORDER BY {_norm_sql(key)} = %(v)s DESC, n_games DESC LIMIT %(n)s
+            """, {"v": v, "p": f"%{v}%", "n": limit})
+            if rows:
+                break
         exact = bool(rows) and _norm([rows[0][key]])[0] == v
-        result = {"market": rows[0] if exact else None, "related": rows[1:] if exact else rows}
+        result = {"matched_as": k, "market": rows[0] if exact else None, "related": rows[1:] if exact else rows}
     else:
         result = {"top_by_n_games": _query("market_overview", args,
                                            f"SELECT * FROM {table} ORDER BY n_games DESC LIMIT %(n)s", {"n": limit})}
@@ -132,22 +176,27 @@ def market_overview(tag: str | None = None, genre: str | None = None, limit: int
 
 def tag_opportunities(tags: list[str] | None = None, max_games: int | None = None, limit: int = 10) -> str:
     """Combo tag "được khen nhiều mà ít đối thủ": luật kết hợp Apriori {tag...} -> HIGH_POSITIVE (>= 90% review khen).
-    confidence = tỷ lệ game có combo này được khen cao; lift = gấp bao nhiêu lần tỷ lệ chung; n_games = số game có combo (đối thủ).
+    confidence = tỷ lệ game có combo này được khen cao; lift = gấp bao nhiêu lần tỷ lệ chung;
+    n_games_with_combo = số game có combo (mức cạnh tranh, đối thủ); n_games_highly_praised = trong đó số game được khen cao.
 
     Args:
         tags: Chỉ lấy combo có chứa TẤT CẢ các tag này (tiếng Anh), ví dụ ["Roguelike"]. Bỏ trống để xem mọi combo.
-        max_games: Chỉ lấy combo có tối đa ngần này game (ít đối thủ). Luật chỉ gồm combo có ít nhất ~3% số game.
+        max_games: Chỉ lấy combo có tối đa ngần này game có combo (ít đối thủ).
         limit: Số combo trả về.
     """
     args = {"tags": tags, "max_games": max_games, "limit": limit}
+    _require_mining("mining.tag_rules")
+    # mining.tag_rules.n_games = số game có combo (vế trái); số game được khen cao = n_games * confidence
     rows = _query("tag_opportunities", args, f"""
-        SELECT antecedents AS tags, n_games, ROUND(confidence::NUMERIC, 3) AS confidence, ROUND(lift::NUMERIC, 2) AS lift
+        SELECT antecedents AS tags, n_games AS n_games_with_combo,
+               ROUND(n_games * confidence)::INT AS n_games_highly_praised, ROUND(confidence::NUMERIC, 3) AS confidence,
+               ROUND(lift::NUMERIC, 2) AS lift
         FROM mining.tag_rules
         WHERE is_high_positive
           AND (CAST(%(tags)s AS TEXT[]) IS NULL
                OR (SELECT ARRAY_AGG({_norm_sql("a")}) FROM UNNEST(antecedents) AS a) @> CAST(%(tags)s AS TEXT[]))
           AND (%(max_games)s IS NULL OR n_games <= %(max_games)s)
-        ORDER BY lift DESC, n_games
+        ORDER BY lift DESC, n_games_with_combo
         LIMIT %(n)s
     """, {"tags": _norm(tags) if tags else None, "max_games": max_games, "n": min(limit, MAX_ROWS)})
     base = _baseline("tag_opportunities")
@@ -164,20 +213,24 @@ def price_benchmark(tags: list[str] | None = None, genre: str | None = None) -> 
     """
     args = {"tags": tags, "genre": genre}
     scope = f"""
-        SELECT f.* FROM marts.mart_mining_features AS f
-        WHERE {UNIVERSE}
-          AND (CAST(%(tags)s AS TEXT[]) IS NULL OR (
-            SELECT COUNT(DISTINCT {_norm_sql("t.tag_name")})
-            FROM dw.bridge_game_tag AS b JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
-            WHERE b.game_id = f.game_id AND b.vote_rank <= 10 AND {_norm_sql("t.tag_name")} = ANY(CAST(%(tags)s AS TEXT[]))
-          ) = CARDINALITY(CAST(%(tags)s AS TEXT[])))
-          AND (CAST(%(genre)s AS TEXT) IS NULL OR EXISTS (
-            SELECT 1 FROM dw.bridge_game_genre AS b JOIN dw.dim_genre AS g ON g.genre_key = b.genre_key
-            WHERE b.game_id = f.game_id AND {_norm_sql("g.genre_name")} = %(genre)s))
+        tagged AS (
+          SELECT b.game_id FROM dw.bridge_game_tag AS b JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
+          WHERE b.vote_rank <= 10 AND {_norm_sql("t.tag_name")} = ANY(CAST(%(tags)s AS TEXT[]))
+          GROUP BY b.game_id
+          HAVING COUNT(DISTINCT {_norm_sql("t.tag_name")}) = CARDINALITY(CAST(%(tags)s AS TEXT[]))
+        ), genred AS (
+          SELECT b.game_id FROM dw.bridge_game_genre AS b JOIN dw.dim_genre AS g ON g.genre_key = b.genre_key
+          WHERE {_norm_sql("g.genre_name")} = %(genre)s
+        ), s AS (
+          SELECT f.* FROM marts.mart_mining_features AS f
+          WHERE {UNIVERSE}
+            AND (CAST(%(tags)s AS TEXT[]) IS NULL OR f.game_id IN (SELECT game_id FROM tagged))
+            AND (CAST(%(genre)s AS TEXT) IS NULL OR f.game_id IN (SELECT game_id FROM genred))
+        )
     """
     params = {"tags": _norm(tags) if tags else None, "genre": _norm([genre])[0] if genre else None}
     summary = _query("price_benchmark", args, f"""
-        WITH s AS ({scope})
+        WITH {scope}
         SELECT COUNT(*) AS n_games, ROUND(100.0 * AVG(is_free::INT), 1) AS pct_free,
                COUNT(*) FILTER (WHERE NOT is_free AND price_vnd > 0) AS n_paid_with_vn_price,
                PERCENTILE_CONT(ARRAY[0.25, 0.5, 0.75]) WITHIN GROUP (ORDER BY price_vnd)
@@ -185,7 +238,7 @@ def price_benchmark(tags: list[str] | None = None, genre: str | None = None) -> 
         FROM s
     """, params)[0]
     bands = _query("price_benchmark", args, f"""
-        WITH s AS ({scope})
+        WITH {scope}
         SELECT CASE WHEN price_vnd < 100000 THEN '1. < 100k' WHEN price_vnd < 250000 THEN '2. 100k-250k'
                     WHEN price_vnd < 500000 THEN '3. 250k-500k' ELSE '4. >= 500k' END AS price_band,
                COUNT(*) AS n_games, ROUND(AVG(positive_ratio)::NUMERIC, 4) AS avg_positive_ratio,
@@ -216,6 +269,7 @@ def similar_games(game_name: str | None = None, tags: list[str] | None = None, l
         """, {"id": exclude})]
     if not tags:
         raise ValueError("Cần game_name (game có dữ liệu tag) hoặc danh sách tags.")
+    clusters = _exists("mining.game_clusters")
     rows = _query("similar_games", args, f"""
         WITH target AS (SELECT UNNEST(CAST(%(tags)s AS TEXT[])) AS tag),
         score AS (
@@ -230,10 +284,10 @@ def similar_games(game_name: str | None = None, tags: list[str] | None = None, l
         SELECT f.game_title, s.shared_tags,
                ROUND(s.shared::NUMERIC / (s.n_tags + (SELECT COUNT(*) FROM target) - s.shared), 3) AS jaccard,
                f.owners_min, f.owners_max, f.positive_ratio, f.total_reviews, f.is_free, f.price_vnd, f.avg_ccu,
-               f.release_date, c.cluster_label
+               f.release_date, {"c.cluster_label" if clusters else "NULL AS cluster_label"}
         FROM score AS s
         JOIN marts.mart_mining_features AS f ON f.game_id = s.game_id
-        LEFT JOIN mining.game_clusters AS c ON c.game_id = s.game_id
+        {"LEFT JOIN mining.game_clusters AS c ON c.game_id = s.game_id" if clusters else ""}
         WHERE s.shared > 0 AND {UNIVERSE} AND f.game_id <> COALESCE(%(exclude)s, -1)
         ORDER BY s.shared DESC, jaccard DESC, f.owners_mid DESC NULLS LAST  -- game ít tag không được ưu tiên nhờ Jaccard
         LIMIT %(n)s
@@ -249,13 +303,14 @@ def market_segments(game_name: str | None = None) -> str:
         game_name: Tên game (tìm gần đúng), ví dụ "Stardew Valley".
     """
     args = {"game_name": game_name}
+    _require_mining("mining.game_clusters")
     result = {"segments": _query("market_segments", args, """
         SELECT c.cluster_id, c.cluster_label, COUNT(*) AS n_games, COUNT(*) FILTER (WHERE f.is_free) AS n_free_games,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.owners_mid) AS median_owners,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.avg_ccu) AS median_ccu,
                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY f.price_vnd) AS median_price_vnd,
                ROUND(AVG(f.positive_ratio)::NUMERIC, 4) AS avg_positive_ratio,
-               (ARRAY_AGG(f.game_title ORDER BY f.owners_mid DESC NULLS LAST))[1:5] AS examples
+               (ARRAY_AGG(f.game_title ORDER BY c.distance_to_center))[1:5] AS examples  -- game gần tâm cụm nhất
         FROM mining.game_clusters AS c JOIN marts.mart_mining_features AS f ON f.game_id = c.game_id
         GROUP BY c.cluster_id, c.cluster_label ORDER BY c.cluster_id
     """)}
@@ -271,12 +326,68 @@ def market_segments(game_name: str | None = None) -> str:
     return _json(result)
 
 
+def top_charts(chart: str = "top_sellers", tag: str | None = None, genre: str | None = None, limit: int = 10) -> str:
+    """Bảng xếp hạng chính thức mới nhất của Steam, dùng cho câu hỏi "game nào đang hot / bán chạy / đông người chơi
+    nhất hiện nay". chart="top_sellers": top 50 bán chạy nhất tại Steam Việt Nam (chụp mỗi ngày, gồm cả game đang cho
+    đặt trước: is_upcoming, rank_change so với hôm trước, most_played_rank = hạng trong top nhiều người chơi).
+    chart="most_played": top 50 nhiều người chơi nhất toàn cầu của ngày gần nhất đã đủ dữ liệu, kèm CCU đỉnh và trung bình.
+    Lọc tag/thể loại chỉ giữ các game TRONG top 50 có tag/thể loại đó; game mới ra có thể chưa có dữ liệu tag.
+
+    Args:
+        chart: "top_sellers" (bán chạy) hoặc "most_played" (nhiều người chơi).
+        tag: Tag Steam tiếng Anh để lọc, ví dụ "FPS", "Survival", "Co-op".
+        genre: Thể loại tiếng Anh để lọc, ví dụ "Action", "RPG".
+        limit: Số game trả về (tối đa 50).
+    """
+    args = {"chart": chart, "tag": tag, "genre": genre, "limit": limit}
+    if chart not in ("top_sellers", "most_played"):
+        raise ValueError('chart phải là "top_sellers" hoặc "most_played".')
+    filters = f"""
+        (CAST(%(tag)s AS TEXT) IS NULL OR EXISTS (
+          SELECT 1 FROM dw.bridge_game_tag AS b JOIN dw.dim_tag AS t ON t.tag_key = b.tag_key
+          WHERE b.game_id = c.game_id AND {_norm_sql("t.tag_name")} = %(tag)s))
+        AND (CAST(%(genre)s AS TEXT) IS NULL OR {_norm_sql("COALESCE(c.genres, '')")} LIKE '%%' || %(genre)s || '%%')
+    """
+    if chart == "top_sellers":
+        sql = f"""
+            SELECT c.catalog_date AS chart_date, c.rank, c.rank_yesterday, c.rank_change, c.game_title, c.genres,
+                   c.is_free, c.price_vnd, c.price_initial_vnd, c.discount_pct, c.release_date, c.is_upcoming,
+                   c.most_played_rank, COUNT(*) OVER () AS n_matching
+            FROM marts.mart_top_sellers AS c WHERE {filters} ORDER BY c.rank LIMIT %(n)s"""
+    else:
+        sql = f"""
+            SELECT c.full_date AS chart_date, c.ranking_order AS rank, c.game_title, c.genres, c.is_free, c.price_vnd,
+                   c.discount_pct, c.peak_ccu, c.avg_ccu, COUNT(*) OVER () AS n_matching
+            FROM marts.mart_executive_overview AS c WHERE {filters} ORDER BY c.ranking_order LIMIT %(n)s"""
+    rows = _query("top_charts", args, sql, {"tag": _norm([tag])[0] if tag else None,
+                                            "genre": _norm([genre])[0] if genre else None, "n": min(limit, MAX_ROWS)})
+    return _json({"chart": chart, "chart_date": rows[0]["chart_date"] if rows else None,
+                  "n_matching_in_top50": rows[0]["n_matching"] if rows else 0,
+                  "games": [{k: v for k, v in r.items() if k not in ("chart_date", "n_matching")} for r in rows]})
+
+
 _READONLY_SQL = re.compile(r"^\s*(select|with)\b", re.IGNORECASE)
 
 
 def run_readonly_sql(query: str) -> str:
-    """Dự phòng khi không công cụ nào khác trả lời được: chạy 1 câu SELECT trên các schema marts, mining, dw
-    (tối đa 50 dòng, quá 5 giây bị hủy). Không sửa được dữ liệu.
+    """Dự phòng khi không công cụ nào khác trả lời được: chạy 1 câu SELECT (tối đa 50 dòng, quá 5 giây bị hủy). Không sửa
+    được dữ liệu. CHỈ dùng đúng các bảng và cột dưới đây (không có bảng nào khác):
+    - marts.mart_mining_features (1 dòng/game): game_id, game_title, app_type, is_free, price_vnd, num_languages,
+      is_multiplayer, is_coop, release_date, developer_name, publisher_name, owners_min, owners_mid, owners_max,
+      positive_reviews, negative_reviews, total_reviews, positive_ratio (0-1), is_high_positive, avg_ccu, peak_ccu,
+      is_in_universe. LUÔN lọc WHERE is_in_universe AND app_type = 'game'; sắp xếp thêm NULLS LAST.
+    - dw.bridge_game_tag (game_id, tag_key, vote_rank: 1 = tag được vote nhiều nhất) JOIN dw.dim_tag (tag_key, tag_name);
+      dw.bridge_game_genre (game_id, genre_key) JOIN dw.dim_genre (genre_key, genre_name).
+    - marts.mart_market_by_tag (tag_name, n_games, median_owners, avg_positive_ratio, pct_high_positive,
+      median_price_vnd, pct_free, median_ccu); marts.mart_market_by_genre (genre_name, cùng các cột).
+    - marts.mart_top_sellers (catalog_date, rank, game_id, game_title, genres, price_vnd, discount_pct, is_upcoming,
+      most_played_rank); marts.mart_executive_overview (full_date, ranking_order, game_id, game_title, genres,
+      peak_ccu, avg_ccu); marts.mart_daily_movers (game_title, status, peak_ccu_change_pct, discount_pct).
+    - mining.tag_rules (antecedents TEXT[], consequents TEXT[], support, confidence, lift, is_high_positive);
+      mining.game_clusters (game_id, cluster_id, cluster_label).
+    Ví dụ top game theo tag: SELECT f.game_title, f.owners_mid, f.positive_ratio FROM marts.mart_mining_features f
+    JOIN dw.bridge_game_tag b ON b.game_id = f.game_id JOIN dw.dim_tag t ON t.tag_key = b.tag_key
+    WHERE t.tag_name = 'Survival' AND f.is_in_universe AND f.app_type = 'game' ORDER BY f.owners_mid DESC NULLS LAST
 
     Args:
         query: Đúng 1 câu SELECT (hoặc WITH ... SELECT) PostgreSQL, không có dấu chấm phẩy.
@@ -288,4 +399,4 @@ def run_readonly_sql(query: str) -> str:
     return _json(_query("run_readonly_sql", {"query": query}, f"SELECT * FROM (\n{query}\n) AS q LIMIT {MAX_ROWS}"))
 
 
-TOOLS = [market_overview, tag_opportunities, price_benchmark, similar_games, market_segments, run_readonly_sql]
+TOOLS = [market_overview, top_charts, tag_opportunities, price_benchmark, similar_games, market_segments, run_readonly_sql]

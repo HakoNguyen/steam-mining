@@ -1,7 +1,7 @@
 """
 Task 6.4 - Luật kết hợp Apriori trên tag (câu hỏi 6): tag nào hay đi cùng nhau,
 tổ hợp tag nào gắn với đánh giá tích cực cao (item ảo HIGH_POSITIVE).
-Kết quả ghi vào mining.tag_rules cho Copilot (tag_opportunities).
+Kết quả ghi vào mining.tag_rules cho Copilot (tag_opportunities): n_games = số game có vế trái (combo tag).
 
     python mining/association_rules.py [min_support]
 """
@@ -72,9 +72,11 @@ def run(transactions_by_game, high_positive_ids, out_dir=OUT_DIR, min_support=0.
 
     # 1 bảng cho Copilot: luật tag-tag và luật tag -> HIGH_POSITIVE (cờ is_high_positive), vế luật là mảng tag
     table = pd.concat([tag_rules.assign(is_high_positive=False), hp_rules.assign(is_high_positive=True)])[
-        cols + ["is_high_positive"]].assign(antecedents=lambda d: d["antecedents"].apply(sorted),
-                                            consequents=lambda d: d["consequents"].apply(sorted))
-    table["n_games"] = (table["support"] * len(transactions)).round().astype(int)
+        cols + ["antecedent support", "is_high_positive"]].assign(antecedents=lambda d: d["antecedents"].apply(sorted),
+                                                                  consequents=lambda d: d["consequents"].apply(sorted))
+    # n_games = số game có vế trái (combo tag) = mức cạnh tranh. "support" của luật tính trên cả hai vế
+    # (vd. combo VÀ được khen cao) nên không dùng được làm số đối thủ.
+    table["n_games"] = (table.pop("antecedent support") * len(transactions)).round().astype(int)
 
     plot_top_rules(tag_rules, out_dir / "rules_top15_lift.png", "Top 15 luật tag theo lift")
     plot_top_rules(hp_rules, out_dir / "rules_high_positive_top15.png",

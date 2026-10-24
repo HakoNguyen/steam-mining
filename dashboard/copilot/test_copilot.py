@@ -20,5 +20,11 @@ def test_tool_schemas():
     assert schemas["similar_games"]["properties"]["tags"]["description"]   # mô tả tham số lấy từ docstring
 
 
+def test_top_charts_rejects_unknown_chart():
+    with tools.tracing() as trace, pytest.raises(ValueError):
+        tools.top_charts(chart="top_grossing")
+    assert trace == []   # bị chặn trước khi chạm DB
+
+
 def test_norm_matches_tag_spellings():
     assert tools._norm(["Rogue-like", "roguelike", "Co-op"]) == ["coop", "roguelike"]
