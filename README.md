@@ -113,6 +113,7 @@ python -m mining.cart_tree           # cây quyết định CART
 python -m mining.review_classifier   # phân loại review (vài phút)
 python -m mining.negative_topics     # chủ đề phàn nàn (NMF)
 ```
+   `mining/outputs/` được commit lên git (~3 MB) để máy khác mở trang Khai phá dữ liệu ngay; sau mỗi lần chạy lại, commit thư mục này để cập nhật.
 
 8. **Metabase và Copilot (một lần):**
 ```bash

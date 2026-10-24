@@ -1,0 +1,37 @@
+{
+  "n_games": 1880,
+  "positive_rate": 0.252,
+  "n_features": 46,
+  "best_max_depth": 3,
+  "cv_f1_by_depth": {
+    "3": 0.401,
+    "4": 0.3829,
+    "5": 0.3941,
+    "6": 0.3724
+  },
+  "test": {
+    "accuracy": 0.633,
+    "precision": 0.3517,
+    "recall": 0.5368,
+    "f1": 0.425,
+    "roc_auc": 0.6455,
+    "confusion_matrix [[TN, FP], [FN, TP]]": [
+      [
+        187,
+        94
+      ],
+      [
+        44,
+        51
+      ]
+    ]
+  },
+  "baseline_most_frequent": {
+    "accuracy": 0.7473,
+    "f1": 0.0
+  },
+  "baseline_stratified": {
+    "accuracy": 0.6144,
+    "f1": 0.2077
+  }
+}

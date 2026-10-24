@@ -1,0 +1,22 @@
+|--- num_languages <= 12.50
+|   |--- is_coop <= 0.50
+|   |   |--- num_languages <= 3.50
+|   |   |   |--- class: 0
+|   |   |--- num_languages >  3.50
+|   |   |   |--- class: 0
+|   |--- is_coop >  0.50
+|   |   |--- tag_Multiplayer <= 0.50
+|   |   |   |--- class: 0
+|   |   |--- tag_Multiplayer >  0.50
+|   |   |   |--- class: 1
+|--- num_languages >  12.50
+|   |--- price_vnd <= 325500.00
+|   |   |--- tag_FPS <= 0.50
+|   |   |   |--- class: 1
+|   |   |--- tag_FPS >  0.50
+|   |   |   |--- class: 1
+|   |--- price_vnd >  325500.00
+|   |   |--- tag_Open World <= 0.50
+|   |   |   |--- class: 1
+|   |   |--- tag_Open World >  0.50
+|   |   |   |--- class: 1

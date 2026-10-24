@@ -1,0 +1,4 @@
+﻿cluster,cluster_label,n_games,owners_mid,avg_ccu,price_vnd,positive_ratio,examples
+0,Trả phí giá rẻ · ít người chơi · khen trung bình,1012,1500000.0,74.75,205000.0,0.872,Labyrinthine; Portal Knights; State of Decay: YOSE; S.T.A.L.K.E.R.: Clear Sky; Quantum Break
+1,Trả phí giá cao · đông người chơi · khen cao,431,3500000.0,1891.75,300000.0,0.914,Pummel Party; Space Engineers; V Rising; The Long Dark; Metro Exodus
+2,Miễn phí · ít người chơi · khen thấp,255,1500000.0,90.25,0.0,0.8,Torque Drift; POLYGON; Escape Room - Der kranke Kollege; WAKFU; Dead Maze
