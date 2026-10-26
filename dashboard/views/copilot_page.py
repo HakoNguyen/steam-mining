@@ -17,6 +17,7 @@ import streamlit as st
 
 from lib import fmt
 from lib.i18n import STR, t
+from lib.theme import palette
 
 TIMEOUT_S = 90
 COOLDOWN_S = 60       # khóa ô nhập sau khi dịch vụ AI báo quá tải
@@ -28,6 +29,7 @@ KINDS = {"stop": "ok", "max_tokens": "ok", "no_answer": "no_answer", "rate_limit
          "out_of_credit": "out_of_credit", "refusal": "refusal", "cancelled": "stopped"}
 ERRORS = {"auth": "cp_err_auth", "network": "cp_err_network", "server": "cp_err_server", "unexpected": "cp_err_unexpected"}
 _CODE = re.compile(r"(```.*?```|`[^`\n]*`)", re.S)
+BG = {"light": "#f9f9f7", "dark": "#141413"}  # backgroundColor trong .streamlit/config.toml
 
 st.title(t("nav_copilot"))
 st.caption(t("cp_caption"))
@@ -302,7 +304,16 @@ locked = not HAS_KEY or not ready["db"] or job is not None   # khóa cứng: thi
 waiting = time.time() < until                                   # khóa tạm: quá tải / hỏi quá nhanh
 examples = EXAMPLES + (MINING_EXAMPLES if ready["mining"] else [])
 
-with st.container(horizontal=True, vertical_alignment="center"):
+# Ghim thanh công cụ dưới header (cao 3.75rem, đè lên vùng cuộn stMain): chat dài vẫn đổi model / hỏi mới được.
+# Streamlit 1.66 gắn class key vào khối bên trong một stLayoutWrapper cao bằng nó, nên sticky phải đặt lên lớp bọc.
+# Nền đặc theo màu nền của theme để tin nhắn cuộn bên dưới không lộ qua.
+pal = palette()
+st.markdown(f"""<style>
+[data-testid="stLayoutWrapper"]:has(> .st-key-cp_toolbar) {{
+  position: sticky; top: 3.75rem; z-index: 99; background: {BG[pal.mode]};
+  padding: 0.5rem 0; border-bottom: 1px solid {pal.grid}; }}
+</style>""", unsafe_allow_html=True)
+with st.container(horizontal=True, vertical_alignment="center", key="cp_toolbar"):
     labels = {p: provider_label(p) for p in AVAILABLE or [PROVIDER]}  # tính sẵn theo ngôn ngữ của lần chạy này
     st.selectbox(t("cp_model_label"), list(labels), format_func=labels.get, key="cp_provider",
                  disabled=job is not None or len(AVAILABLE) < 2, label_visibility="collapsed", width=360,

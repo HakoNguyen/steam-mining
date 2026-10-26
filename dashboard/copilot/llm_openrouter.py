@@ -20,7 +20,7 @@ from copilot import tools
 
 log = logging.getLogger(__name__)
 URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL = tools.ENV.get("COPILOT_OPENROUTER_MODEL", "deepseek/deepseek-v4-flash")
+MODEL = tools.ENV.get("COPILOT_OPENROUTER_MODEL", "deepseek/deepseek-v4.1-flash-1017")
 SYSTEM = (Path(__file__).parent / "prompts" / "market_assistant.md").read_text(encoding="utf-8")
 MAX_ROUNDS = 5          # số vòng gọi công cụ tối đa cho 1 câu hỏi (mỗi vòng = 1 request tính tiền)
 TIMEOUT = (10, 60)      # (kết nối, chờ trả lời) giây cho mỗi request
