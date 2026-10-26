@@ -91,6 +91,12 @@ def collect_store_details(appid, client):
     # cc=vn: giá luôn trả về VND, không phụ thuộc vùng của máy gọi
     url = f"https://store.steampowered.com/api/appdetails?appids={appid}&l=english&cc=vn"
     data = fetch_steam_api(url)
+    if data and not (data.get(str(appid)) or {}).get("success"):
+        # Game không bán ở Việt Nam (vd. AION 2) trả success=false: lấy tên, thể loại, ngày phát hành ở khu vực US.
+        # Giá USD bị staging bỏ qua (chỉ nhận currency VND) nên cột giá VND vẫn để trống, không bị sai.
+        us = fetch_steam_api(url.replace("cc=vn", "cc=us"))
+        if us and (us.get(str(appid)) or {}).get("success"):
+            data = us
     if data:
         save_json_to_minio(client, "store", appid, data)
         return True

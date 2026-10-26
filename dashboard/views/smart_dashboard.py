@@ -14,6 +14,14 @@ def _ts(s):
     return ts.dt.tz_localize(None) if getattr(ts.dt, "tz", None) is not None else ts
 
 
+def _named(df):
+    """Game chưa có tên (Steam chưa trả thông tin, vd. game mới không bán ở VN) -> "App <appid>" thay vì thanh trống."""
+    if {"game_title", "game_id"} <= set(df.columns):
+        empty = df["game_title"].fillna("").str.strip() == ""
+        df.loc[empty, "game_title"] = "App " + df.loc[empty, "game_id"].astype(str)
+    return df
+
+
 def cols(df, **keys):
     """Chọn và đổi tên cột cho bảng số liệu theo ngôn ngữ: cols(df, game_title="col_game", ...)."""
     return df[list(keys)].rename(columns={c: t(k) for c, k in keys.items()})
@@ -46,10 +54,15 @@ def seller_table(df, n=15):
         c = int(r["rank_change"])
         return f"▲ {c}" if c > 0 else f"▼ {-c}" if c < 0 else "="
 
+    # Cột giá giữ số để bấm tiêu đề sắp được theo thứ tự có giá > miễn phí (0) > chưa có giá (-1);
+    # chữ hiển thị đặt qua Styler.format (Streamlit hiện chữ đó nhưng vẫn sắp theo số)
     def price(r):
         if pd.notna(r["is_free"]) and bool(r["is_free"]):
-            return t("free")
-        return fmt.vnd(r["price_vnd"]) if pd.notna(r["price_vnd"]) else "—"
+            return 0
+        return r["price_vnd"] if pd.notna(r["price_vnd"]) else -1
+
+    def price_label(v):
+        return t("free") if v == 0 else "—" if v < 0 else fmt.vnd(v)
 
     table = pd.DataFrame({
         t("col_rank"): d["rank"].astype(int),
@@ -61,7 +74,8 @@ def seller_table(df, n=15):
         t("col_discount"): d["discount_pct"].where(d["discount_pct"] > 0),
         t("col_mp_rank"): d["most_played_rank"],
     })
-    st.dataframe(table, hide_index=True, width="stretch", height=35 * (len(table) + 1) + 3,
+    st.dataframe(table.style.format(price_label, subset=[t("col_price_text")]),
+                 hide_index=True, width="stretch", height=35 * (len(table) + 1) + 3,
                  column_config={
                      t("col_rank"): st.column_config.NumberColumn(width="small"),
                      t("col_discount"): st.column_config.NumberColumn(format="%d%%", width="small"),
@@ -99,6 +113,7 @@ except Exception as e:  # Metabase chưa chạy hoặc thiếu API key
     st.error(t("sd_error", e=e))
     st.stop()
 
+top50, movers, hourly, top_sellers = (_named(d) for d in (top50, movers, hourly, top_sellers))
 hourly["snapshot_at_vn"] = _ts(hourly["snapshot_at_vn"])
 report_date = _ts(top50["full_date"]).iloc[0]
 
